@@ -21,6 +21,7 @@ declare global {
   interface BluetoothRemoteGATTServer {
     getPrimaryService: (service: string) => Promise<BluetoothRemoteGATTService>
     disconnect: () => void
+    connected: boolean
   }
   
   interface BluetoothRemoteGATTService {
@@ -154,16 +155,15 @@ export default function ThermalPrinter({ receiptHTML, onPrintSuccess, onPrintErr
         console.log('Menggunakan konfigurasi khusus Android...')
         // Android often works better with fewer filters and more optionalServices
         bluetoothOptions = {
-          // On Android, we use fewer filters to improve compatibility
-          filters: [
-            { namePrefix: 'Printer' },
-            { namePrefix: 'POS' },
-            { namePrefix: 'Thermal' },
-            { namePrefix: 'BT' }
-          ],
+          // Untuk Android, kita gunakan acceptAllDevices untuk melihat semua perangkat Bluetooth
+          // Ini membantu menemukan printer yang mungkin tidak mengiklankan layanan standar
+          acceptAllDevices: true,
           // Include all services as optional for better device discovery
           optionalServices: PRINTER_SERVICES
         }
+        
+        console.log('Konfigurasi Android: acceptAllDevices dengan optionalServices')
+        console.log('PENTING: Pastikan printer sudah dipasangkan di pengaturan Bluetooth Android')
       } else {
         // Default configuration for other platforms
         bluetoothOptions = {
@@ -208,17 +208,73 @@ export default function ThermalPrinter({ receiptHTML, onPrintSuccess, onPrintErr
       
       // Connect to the GATT server
       console.log('Menghubungkan ke GATT server...')
-      const server = await device.gatt.connect()
+      
+      // Pada Android, kita perlu menangani koneksi GATT dengan lebih hati-hati
+      let server
+      try {
+        // Tambahkan timeout untuk koneksi GATT
+        const connectPromise = device.gatt.connect()
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Timeout menghubungkan ke GATT server')), 10000)
+        })
+        
+        server = await Promise.race([connectPromise, timeoutPromise])
+        console.log('Koneksi ke GATT server berhasil')
+      } catch (gattError) {
+        console.error('Error saat menghubungkan ke GATT server:', gattError)
+        
+        if (isAndroid) {
+          // Pada Android, coba lagi dengan delay dan beberapa kali percobaan
+          console.log('Mencoba ulang koneksi GATT pada Android dengan delay...')
+          
+          // Coba hingga 3 kali dengan delay yang meningkat
+          let retryCount = 0
+          const maxRetries = 3
+          
+          while (retryCount < maxRetries) {
+            try {
+              // Tunggu dengan delay yang meningkat setiap percobaan
+              const delayMs = 2000 + (retryCount * 1000)
+              console.log(`Percobaan ${retryCount + 1}/${maxRetries} dengan delay ${delayMs}ms...`)
+              await new Promise(resolve => setTimeout(resolve, delayMs))
+              
+              // Coba hubungkan kembali
+              server = await device.gatt.connect()
+              console.log(`Koneksi berhasil pada percobaan ke-${retryCount + 1}`)
+              break
+            } catch (retryError) {
+              retryCount++
+              console.error(`Gagal pada percobaan ke-${retryCount}:`, retryError)
+              
+              if (retryCount >= maxRetries) {
+                // Analisis error untuk memberikan pesan yang lebih spesifik
+                const errorMsg = String(retryError).toLowerCase()
+                if (errorMsg.includes('gatt') && errorMsg.includes('error')) {
+                  throw new Error('GATT Error: Gagal menghubungkan ke printer')
+                } else if (errorMsg.includes('not paired') || errorMsg.includes('pairing')) {
+                  throw new Error('Not paired: Printer belum dipasangkan di pengaturan Bluetooth Android')
+                } else if (errorMsg.includes('timeout')) {
+                  throw new Error('Timeout: Printer tidak merespon dalam waktu yang ditentukan')
+                } else {
+                  throw new Error(`Gagal menghubungkan setelah ${maxRetries} percobaan: ${retryError instanceof Error ? retryError.message : String(retryError)}`)
+                }
+              }
+            }
+          }
+        } else {
+          throw gattError
+        }
+      }
       
       // Mencoba mendapatkan layanan yang tersedia satu per satu
       console.log('Mencoba mendapatkan layanan yang tersedia...')
-      let allServices = []
+      let allServices: any[] = []
       
       // Karena getPrimaryServices() tidak tersedia di semua implementasi,
       // kita akan mencoba mendapatkan layanan satu per satu dari daftar yang kita ketahui
       for (const serviceUuid of PRINTER_SERVICES) {
         try {
-          const service = await server.getPrimaryService(serviceUuid)
+          const service = await (server as BluetoothRemoteGATTServer).getPrimaryService(serviceUuid)
           if (service) {
             allServices.push(service)
             console.log(`Layanan ditemukan: ${serviceUuid}`)
@@ -235,6 +291,7 @@ export default function ThermalPrinter({ receiptHTML, onPrintSuccess, onPrintErr
       
       // First try with all discovered services
       let characteristic = null
+      let foundCharacteristics = []
       if (allServices.length > 0) {
         for (const service of allServices) {
           try {
@@ -276,14 +333,31 @@ export default function ThermalPrinter({ receiptHTML, onPrintSuccess, onPrintErr
               // Check if characteristic is writable
               if (char.properties.write || char.properties.writeWithoutResponse) {
                 console.log(`Karakteristik yang dapat ditulis ditemukan: ${char.uuid || 'unknown'}`)
-                characteristic = char
-                break
+                foundCharacteristics.push(char)
               }
             }
-            
-            if (characteristic) break
           } catch (serviceError) {
             console.log(`Error saat memeriksa layanan: ${service.uuid || 'unknown'}`, serviceError)
+          }
+        }
+        
+        // Prioritize characteristics that support writeWithoutResponse for Android
+        if (foundCharacteristics.length > 0) {
+          console.log(`Ditemukan ${foundCharacteristics.length} karakteristik yang dapat ditulis`)
+          
+          if (isAndroid) {
+            // For Android, prioritize characteristics with writeWithoutResponse
+            const writeWithoutResponseChar = foundCharacteristics.find(char => char.properties.writeWithoutResponse)
+            if (writeWithoutResponseChar) {
+              characteristic = writeWithoutResponseChar
+              console.log('Menggunakan karakteristik dengan writeWithoutResponse untuk Android')
+            } else {
+              characteristic = foundCharacteristics[0]
+              console.log('Tidak ada karakteristik writeWithoutResponse, menggunakan karakteristik write standar')
+            }
+          } else {
+            // For other platforms, use the first characteristic found
+            characteristic = foundCharacteristics[0]
           }
         }
       }
@@ -296,40 +370,80 @@ export default function ThermalPrinter({ receiptHTML, onPrintSuccess, onPrintErr
         for (const serviceId of PRINTER_SERVICES) {
           try {
             console.log(`Mencoba service: ${serviceId}...`)
-            service = await server.getPrimaryService(serviceId)
+            service = await (server as BluetoothRemoteGATTServer).getPrimaryService(serviceId)
             
-            // Try to find a writable characteristic
+            // Try to find writable characteristics
             try {
               // Try standard SPP characteristic first
               const sppCharacteristic = '0000ffe1-0000-1000-8000-00805f9b34fb' // Standard SPP characteristic
-              characteristic = await service.getCharacteristic(sppCharacteristic)
-              console.log('Karakteristik SPP ditemukan')
-            } catch (charErr) {
-              console.log('Karakteristik SPP tidak ditemukan, mencoba karakteristik lain...')
+              try {
+                const char = await service.getCharacteristic(sppCharacteristic)
+                if (char && (char.properties.write || char.properties.writeWithoutResponse)) {
+                  foundCharacteristics.push(char)
+                  console.log('Karakteristik SPP ditemukan')
+                }
+              } catch (sppErr) {
+                console.log('Karakteristik SPP tidak ditemukan, mencoba karakteristik lain...')
+              }
               
               // Try other common printer characteristics
               for (const charId of PRINTER_CHARACTERISTICS) {
                 try {
-                  characteristic = await service.getCharacteristic(charId)
-                  if (characteristic.properties.write || characteristic.properties.writeWithoutResponse) {
-                    console.log(`Karakteristik yang dapat ditulis ditemukan: ${charId}`)
-                    break
+                  const char = await service.getCharacteristic(charId)
+                  if (char && (char.properties.write || char.properties.writeWithoutResponse)) {
+                    foundCharacteristics.push(char)
+                    console.log(`Karakteristik ditemukan: ${charId}`)
                   }
                 } catch (e) {
                   console.log(`Karakteristik ${charId} tidak tersedia`)
                 }
               }
+            } catch (charErr) {
+              console.log(`Error saat mencari karakteristik: ${charErr instanceof Error ? charErr.message : String(charErr)}`)
             }
-            
-            if (characteristic) break
           } catch (err) {
             console.log(`Service ${serviceId} tidak tersedia`, err)
+          }
+        }
+        
+        // Prioritaskan karakteristik yang mendukung writeWithoutResponse untuk Android
+        if (foundCharacteristics.length > 0) {
+          console.log(`Total ditemukan ${foundCharacteristics.length} karakteristik yang dapat ditulis`)
+          
+          if (isAndroid) {
+            // Untuk Android, prioritaskan karakteristik dengan writeWithoutResponse
+            const writeWithoutResponseChar = foundCharacteristics.find(char => char.properties.writeWithoutResponse)
+            if (writeWithoutResponseChar) {
+              characteristic = writeWithoutResponseChar
+              console.log('Menggunakan karakteristik dengan writeWithoutResponse untuk Android')
+            } else {
+              characteristic = foundCharacteristics[0]
+              console.log('Tidak ada karakteristik writeWithoutResponse, menggunakan karakteristik write standar')
+            }
+          } else {
+            // Untuk platform lain, gunakan karakteristik pertama yang ditemukan
+            characteristic = foundCharacteristics[0]
           }
         }
       }
       
       if (!characteristic) {
-        throw new Error('Tidak dapat menemukan karakteristik yang dapat ditulis pada printer. Pastikan printer dalam mode siap terima koneksi.')
+        let errorMsg = 'Tidak dapat menemukan karakteristik yang dapat ditulis pada printer.';
+        
+        if (isAndroid) {
+          errorMsg += ' Untuk Android: Pastikan printer sudah dipasangkan di pengaturan Bluetooth, coba matikan dan nyalakan printer, lalu coba lagi.';
+          
+          // Tambahkan informasi diagnostik
+          if (allServices.length === 0) {
+            errorMsg += ' Tidak ada layanan Bluetooth yang ditemukan pada printer.';
+          } else if (foundCharacteristics.length === 0) {
+            errorMsg += ' Tidak ada karakteristik yang dapat ditulis yang ditemukan pada layanan printer.';
+          }
+        } else {
+          errorMsg += ' Pastikan printer dalam mode siap terima koneksi.';
+        }
+        
+        throw new Error(errorMsg);
       }
       
       setBluetoothDevice(device)
@@ -340,10 +454,11 @@ export default function ThermalPrinter({ receiptHTML, onPrintSuccess, onPrintErr
       console.log('Koneksi Bluetooth berhasil')
       return true
     } catch (error: unknown) {
-      console.error('Error connecting to Bluetooth printer:', error)
-      let errorMsg = 'Pastikan printer Bluetooth aktif dan dalam jangkauan.'
-      
-      if (error instanceof Error) {
+      try {
+        console.error('Error connecting to Bluetooth printer:', error)
+        let errorMsg = 'Pastikan printer Bluetooth aktif dan dalam jangkauan.'
+        
+        if (error instanceof Error) {
         if (error.name === 'NotFoundError') {
           errorMsg = 'Tidak dapat menemukan printer Bluetooth yang didukung. Pastikan printer dinyalakan dan dalam mode pairing.'
         } else if (error.name === 'SecurityError') {
@@ -359,6 +474,12 @@ export default function ThermalPrinter({ receiptHTML, onPrintSuccess, onPrintErr
           errorMsg = 'Adapter Bluetooth tidak tersedia. Pastikan Bluetooth diaktifkan pada perangkat Android Anda.'
         } else if (isAndroid && error.message.includes('Location permission')) {
           errorMsg = 'Izin lokasi diperlukan untuk pemindaian Bluetooth pada Android. Berikan izin lokasi saat diminta.'
+        } else if (isAndroid && (error.message.includes('GATT Error') || error.message.includes('GATT'))) {
+          errorMsg = 'GATT Error: Pastikan printer sudah dipasangkan (paired) di pengaturan Bluetooth Android sebelum mencoba menghubungkan di aplikasi.'
+        } else if (isAndroid && error.message.includes('Not paired')) {
+          errorMsg = 'Printer tidak dipasangkan: Anda harus memasangkan (pair) printer di pengaturan Bluetooth Android terlebih dahulu.'
+        } else if (isAndroid && error.message.includes('Timeout')) {
+          errorMsg = 'Koneksi timeout: Printer mungkin tidak merespon. Pastikan printer menyala, dalam jangkauan, dan sudah dipasangkan di pengaturan Bluetooth.'
         } else {
           errorMsg = error.message
         }
@@ -368,6 +489,13 @@ export default function ThermalPrinter({ receiptHTML, onPrintSuccess, onPrintErr
       if (onPrintError) onPrintError(`Gagal terhubung ke printer Bluetooth: ${errorMsg}`)
       setIsLoading(false)
       return false
+      } catch (finalError) {
+        console.error('Final error handler:', finalError)
+        setErrorMessage(`Gagal terhubung ke printer Bluetooth: Terjadi kesalahan tak terduga`)
+        if (onPrintError) onPrintError(`Gagal terhubung ke printer Bluetooth: Terjadi kesalahan tak terduga`)
+        setIsLoading(false)
+        return false
+      }
     }
   }
   
@@ -589,21 +717,48 @@ export default function ThermalPrinter({ receiptHTML, onPrintSuccess, onPrintErr
             if (isAndroid) {
               console.log('Mengirim data pada perangkat Android...')
               
-              // Pada Android, beberapa perangkat bekerja lebih baik dengan writeWithoutResponse jika tersedia
+              // Pada Android, gunakan writeWithoutResponse jika tersedia
+              // Ini sering kali lebih andal untuk printer thermal pada Android
               if (bluetoothCharacteristic.properties.writeWithoutResponse) {
-                console.log('Menggunakan writeValue dengan properti writeWithoutResponse pada Android')
+                console.log('Menggunakan writeWithoutResponse pada Android')
+                try {
+                  // @ts-ignore - writeWithoutResponse mungkin tidak ada di semua implementasi
+                  if (typeof bluetoothCharacteristic.writeWithoutResponse === 'function') {
+                    // @ts-ignore
+                    await bluetoothCharacteristic.writeWithoutResponse(chunk)
+                    console.log('Data berhasil dikirim dengan writeWithoutResponse')
+                  } else {
+                    console.log('writeWithoutResponse tidak tersedia, menggunakan writeValue')
+                    await bluetoothCharacteristic.writeValue(chunk)
+                  }
+                } catch (writeError) {
+                  console.error('Error dengan writeWithoutResponse, mencoba writeValue:', writeError)
+                  // Tambahkan timeout yang lebih panjang untuk Android
+                  const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Timeout mengirim data ke printer')), 10000) // Timeout lebih panjang (10 detik)
+                  })
+                  
+                  // Race antara pengiriman data dan timeout
+                  await Promise.race([
+                    bluetoothCharacteristic.writeValue(chunk),
+                    timeoutPromise
+                  ])
+                  console.log('Data berhasil dikirim dengan writeValue (fallback)')
+                }
+              } else {
+                console.log('Karakteristik tidak mendukung writeWithoutResponse, menggunakan writeValue standar')
+                
+                // Tambahkan timeout yang lebih panjang untuk Android
+                const timeoutPromise = new Promise((_, reject) => {
+                  setTimeout(() => reject(new Error('Timeout mengirim data ke printer')), 10000) // Timeout lebih panjang (10 detik)
+                })
+                
+                // Race antara pengiriman data dan timeout
+                await Promise.race([
+                  bluetoothCharacteristic.writeValue(chunk),
+                  timeoutPromise
+                ])
               }
-              
-              // Tambahkan timeout yang lebih panjang untuk Android
-              const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Timeout mengirim data ke printer')), 5000)
-              })
-              
-              // Race antara pengiriman data dan timeout
-              await Promise.race([
-                bluetoothCharacteristic.writeValue(chunk),
-                timeoutPromise
-              ])
             } else {
               // Untuk platform lain, gunakan metode standar
               if (bluetoothCharacteristic.properties.writeWithoutResponse) {
@@ -637,9 +792,47 @@ export default function ThermalPrinter({ receiptHTML, onPrintSuccess, onPrintErr
         // Increased delay between chunks to allow printer to process
         // Use longer delay for Android devices
         if (offset < dataArray.length) {
-          const chunkDelay = isAndroid ? 800 : 500 // Longer delay for Android
+          // Gunakan delay yang jauh lebih panjang untuk Android
+          // Printer thermal pada Android sering membutuhkan waktu lebih lama untuk memproses data
+          const chunkDelay = isAndroid ? 1200 : 500 // Delay lebih panjang untuk Android
           console.log(`Menunggu ${chunkDelay}ms sebelum mengirim paket berikutnya...`)
           await new Promise(resolve => setTimeout(resolve, chunkDelay))
+          
+          // Pada Android, tambahkan pengecekan status koneksi setelah setiap chunk
+          if (isAndroid && bluetoothDevice && offset + BT_CHUNK_SIZE < dataArray.length) {
+            // Periksa apakah perangkat masih terhubung
+            // Karena kita tidak bisa langsung mengakses status koneksi, kita coba hubungkan kembali jika diperlukan
+            try {
+              // Coba hubungkan kembali jika gatt tersedia
+              if (bluetoothDevice.gatt) {
+                console.log('Memverifikasi koneksi Bluetooth...')
+                try {
+                  const gattServer = await bluetoothDevice.gatt.connect()
+                  console.log('Koneksi dipertahankan atau berhasil menghubungkan kembali')
+                  
+                  // Verifikasi bahwa karakteristik masih valid
+                  if (!bluetoothCharacteristic) {
+                    console.log('Karakteristik hilang, mencoba mendapatkan kembali...')
+                    // Coba dapatkan kembali karakteristik jika hilang
+                    // Ini adalah implementasi sederhana, dalam kasus nyata mungkin perlu logika yang lebih kompleks
+                    throw new Error('Karakteristik Bluetooth hilang, perlu menghubungkan ulang')
+                  }
+                } catch (verifyError) {
+                  console.error('Error saat memverifikasi koneksi:', verifyError)
+                  
+                  // Jika terjadi error, coba hubungkan ulang sepenuhnya
+                  console.log('Mencoba menghubungkan ulang sepenuhnya...')
+                  await connectBluetoothPrinter()
+                  
+                  // Jika sampai di sini berarti koneksi berhasil, lanjutkan pengiriman
+                  console.log('Berhasil menghubungkan ulang, melanjutkan pengiriman data')
+                }
+              }
+            } catch (reconnectError) {
+              console.error('Gagal menghubungkan kembali:', reconnectError)
+              throw new Error('Koneksi Bluetooth terputus saat mengirim data dan tidak dapat menghubungkan ulang')
+            }
+          }
         }
       }
       
@@ -655,7 +848,27 @@ export default function ThermalPrinter({ receiptHTML, onPrintSuccess, onPrintErr
       let errorMsg = `Gagal mengirim data ke printer ${printerName || 'thermal'}`
       
       if (error instanceof Error) {
-        errorMsg += `: ${error.message}`
+        // Analisis error untuk memberikan pesan yang lebih spesifik
+        const errorLower = error.message.toLowerCase()
+        
+        if (isAndroid) {
+          if (errorLower.includes('gatt') && errorLower.includes('error')) {
+            errorMsg = 'GATT Error: Koneksi Bluetooth terputus. Pastikan printer tetap menyala selama pencetakan dan coba lagi.'
+          } else if (errorLower.includes('not paired') || errorLower.includes('pairing')) {
+            errorMsg = 'Printer tidak dipasangkan: Buka pengaturan Bluetooth Android, pasangkan printer terlebih dahulu, lalu coba lagi.'
+          } else if (errorLower.includes('timeout')) {
+            errorMsg = 'Timeout: Printer tidak merespon. Pastikan printer menyala, dalam jangkauan, dan baterai mencukupi.'
+          } else if (errorLower.includes('disconnected') || errorLower.includes('closed')) {
+            errorMsg = 'Koneksi terputus: Printer mungkin mati atau di luar jangkauan. Pastikan printer tetap menyala selama pencetakan.'
+          } else if (errorLower.includes('karakteristik') || errorLower.includes('characteristic')) {
+            errorMsg = 'Karakteristik Bluetooth hilang: Coba matikan dan nyalakan printer, lalu hubungkan kembali.'
+          } else {
+            errorMsg += `: ${error.message}`
+          }
+        } else {
+          errorMsg += `: ${error.message}`
+        }
+        
         console.error(errorMsg, error)
       } else {
         console.error(errorMsg, error)
@@ -670,7 +883,10 @@ export default function ThermalPrinter({ receiptHTML, onPrintSuccess, onPrintErr
         const errorLower = error.message.toLowerCase()
         if (errorLower.includes('disconnected') || 
             errorLower.includes('closed') || 
-            errorLower.includes('timeout')) {
+            errorLower.includes('timeout') ||
+            errorLower.includes('gatt') ||
+            errorLower.includes('karakteristik') ||
+            errorLower.includes('characteristic')) {
           console.log('Mencoba menghubungkan kembali printer...')
           setIsConnected(false)
           setBluetoothDevice(null)
@@ -726,10 +942,18 @@ export default function ThermalPrinter({ receiptHTML, onPrintSuccess, onPrintErr
             </span>
           )}
         </p>
-        {isAndroid && !isConnected && (
-          <p className="mt-1 text-xs text-blue-600">
-            Perangkat Android terdeteksi. Pastikan Anda menggunakan Chrome dan telah mengaktifkan Bluetooth.
-          </p>
+        {isAndroid && (
+          <div className="mt-1 text-xs">
+            <p className="text-blue-600">
+              <strong>Perangkat Android terdeteksi.</strong> Pastikan Anda:
+            </p>
+            <ol className="list-decimal pl-5 mt-1 text-blue-600">
+              <li>Menggunakan Chrome versi terbaru</li>
+              <li>Telah mengaktifkan Bluetooth</li>
+              <li><strong>Sudah memasangkan (pair) printer di pengaturan Bluetooth Android</strong></li>
+              <li>Memberikan izin Lokasi saat diminta (diperlukan untuk pemindaian Bluetooth)</li>
+            </ol>
+          </div>
         )}
       </div>
       
@@ -760,9 +984,15 @@ export default function ThermalPrinter({ receiptHTML, onPrintSuccess, onPrintErr
           <p>{errorMessage}</p>
           <p className="mt-1">Pastikan printer thermal sudah dinyalakan dan dalam jangkauan koneksi Bluetooth.</p>
           {isAndroid && (
-            <p className="mt-1">
-              <strong>Untuk pengguna Android:</strong> Pastikan Anda telah memberikan izin Bluetooth dan Lokasi saat diminta. Beberapa perangkat Android memerlukan izin lokasi untuk menggunakan Bluetooth.
-            </p>
+            <div className="mt-1">
+              <p><strong>Untuk pengguna Android:</strong></p>
+              <ol className="list-decimal pl-5 mt-1">
+                <li><strong>Pastikan printer sudah dipasangkan (paired) di pengaturan Bluetooth Android</strong> sebelum mencoba menghubungkan di aplikasi.</li>
+                <li>Berikan izin Bluetooth dan Lokasi saat diminta. Android memerlukan izin lokasi untuk pemindaian Bluetooth.</li>
+                <li>Jika masih gagal, coba matikan dan nyalakan kembali printer dan Bluetooth di perangkat Android.</li>
+                <li>Pada beberapa perangkat, Anda mungkin perlu membuka pengaturan Bluetooth dan memilih printer secara manual terlebih dahulu.</li>
+              </ol>
+            </div>
           )}
         </div>
       )}

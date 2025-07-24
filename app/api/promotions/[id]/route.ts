@@ -85,7 +85,7 @@ export async function PUT(
     }
 
     // Validate required fields
-    if (!name || !type || discountValue === undefined || !startDate || !endDate) {
+    if (!name || !type || discountValue === undefined || !discountType || !startDate || !endDate) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }

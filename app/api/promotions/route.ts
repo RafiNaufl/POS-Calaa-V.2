@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
       description,
       type,
       discountValue,
+      discountType,
       minQuantity,
       buyQuantity,
       getQuantity,
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
     } = body
 
     // Validate required fields
-    if (!name || !type || discountValue === undefined || !startDate || !endDate) {
+    if (!name || !type || discountValue === undefined || !discountType || !startDate || !endDate) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -100,6 +101,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Validate discount type
+    if (!['PERCENTAGE', 'FIXED'].includes(discountType)) {
+      return NextResponse.json(
+        { error: 'Invalid discount type' },
+        { status: 400 }
+      )
+    }
+
     // Create promotion with related products and categories
     const promotion = await prisma.promotion.create({
       data: {
@@ -107,6 +116,7 @@ export async function POST(request: NextRequest) {
         description,
         type,
         discountValue,
+        discountType,
         minQuantity,
         buyQuantity,
         getQuantity,

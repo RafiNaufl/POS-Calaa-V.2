@@ -56,26 +56,26 @@ async function createUsers() {
     const categories = await Promise.all([
       prisma.category.create({
         data: {
-          name: 'Makanan',
-          description: 'Kategori makanan'
+          name: 'Atasan',
+          description: 'Kategori pakaian atasan seperti kemeja, kaos, blouse'
         }
       }),
       prisma.category.create({
         data: {
-          name: 'Minuman',
-          description: 'Kategori minuman'
+          name: 'Bawahan',
+          description: 'Kategori pakaian bawahan seperti celana, rok, jeans'
         }
       }),
       prisma.category.create({
         data: {
-          name: 'Snack',
-          description: 'Kategori snack'
+          name: 'Aksesoris',
+          description: 'Kategori aksesoris seperti topi, syal, ikat pinggang'
         }
       }),
       prisma.category.create({
         data: {
-          name: 'Dessert',
-          description: 'Kategori dessert'
+          name: 'Sepatu',
+          description: 'Kategori sepatu dan alas kaki'
         }
       })
     ])
@@ -84,196 +84,196 @@ async function createUsers() {
     await Promise.all([
       prisma.product.create({
         data: {
-          name: 'Nasi Goreng',
-          description: 'Nasi goreng spesial',
-          price: 15000,
+          name: 'Kemeja Putih',
+          description: 'Kemeja putih formal lengan panjang',
+          price: 150000,
           stock: 50,
           categoryId: categories[0].id,
-          image: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=400&h=300&fit=crop&crop=center'
         }
       }),
       prisma.product.create({
         data: {
-          name: 'Mie Ayam',
-          description: 'Mie ayam bakso',
-          price: 12000,
-          stock: 30,
-          categoryId: categories[0].id,
-          image: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=400&h=300&fit=crop&crop=center'
-        }
-      }),
-      prisma.product.create({
-        data: {
-          name: 'Es Teh',
-          description: 'Es teh manis',
-          price: 3000,
+          name: 'Kaos Polos Hitam',
+          description: 'Kaos polos hitam bahan cotton combed 30s',
+          price: 80000,
           stock: 100,
-          categoryId: categories[1].id,
-          image: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=400&h=300&fit=crop&crop=center'
-        }
-      }),
-      prisma.product.create({
-        data: {
-          name: 'Kopi',
-          description: 'Kopi hitam',
-          price: 5000,
-          stock: 80,
-          categoryId: categories[1].id,
-          image: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400&h=300&fit=crop&crop=center'
-        }
-      }),
-      prisma.product.create({
-        data: {
-          name: 'Keripik',
-          description: 'Keripik kentang',
-          price: 8000,
-          stock: 25,
-          categoryId: categories[2].id,
-          image: 'https://images.unsplash.com/photo-1621939514649-280e2ee25f60?w=400&h=300&fit=crop&crop=center'
-        }
-      }),
-      // Makanan Utama tambahan
-      prisma.product.create({
-        data: {
-          name: 'Ayam Bakar',
-          description: 'Ayam bakar bumbu kecap dengan lalapan',
-          price: 28000,
-          stock: 15,
           categoryId: categories[0].id,
-          image: 'https://images.unsplash.com/photo-1598103442097-8b74394b95c6?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=400&h=300&fit=crop&crop=center'
         }
       }),
       prisma.product.create({
         data: {
-          name: 'Gado-gado',
-          description: 'Gado-gado dengan bumbu kacang',
-          price: 18000,
+          name: 'Celana Jeans',
+          description: 'Celana jeans slim fit pria',
+          price: 250000,
+          stock: 30,
+          categoryId: categories[1].id,
+          image: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=400&h=300&fit=crop&crop=center'
+        }
+      }),
+      prisma.product.create({
+        data: {
+          name: 'Rok Midi Plisket',
+          description: 'Rok midi plisket wanita',
+          price: 180000,
+          stock: 25,
+          categoryId: categories[1].id,
+          image: 'https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?w=400&h=300&fit=crop&crop=center'
+        }
+      }),
+      prisma.product.create({
+        data: {
+          name: 'Topi Baseball',
+          description: 'Topi baseball casual unisex',
+          price: 75000,
+          stock: 40,
+          categoryId: categories[2].id,
+          image: 'https://images.unsplash.com/photo-1588850561407-ed78c282e89b?w=400&h=300&fit=crop&crop=center'
+        }
+      }),
+      // Atasan tambahan
+      prisma.product.create({
+        data: {
+          name: 'Blouse Floral',
+          description: 'Blouse motif bunga lengan pendek',
+          price: 120000,
+          stock: 35,
+          categoryId: categories[0].id,
+          image: 'https://images.unsplash.com/photo-1564257631407-4deb1f99d992?w=400&h=300&fit=crop&crop=center'
+        }
+      }),
+      prisma.product.create({
+        data: {
+          name: 'Kemeja Flannel',
+          description: 'Kemeja flannel kotak-kotak',
+          price: 185000,
           stock: 20,
           categoryId: categories[0].id,
-          image: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1589310243389-96a5483213a8?w=400&h=300&fit=crop&crop=center'
         }
       }),
       prisma.product.create({
         data: {
-          name: 'Soto Ayam',
-          description: 'Soto ayam kuning dengan telur dan kerupuk',
-          price: 22000,
+          name: 'Sweater Rajut',
+          description: 'Sweater rajut tebal untuk musim dingin',
+          price: 220000,
           stock: 18,
           categoryId: categories[0].id,
-          image: 'https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1576871337622-98d48d1cf531?w=400&h=300&fit=crop&crop=center'
         }
       }),
       prisma.product.create({
         data: {
-          name: 'Rendang',
-          description: 'Rendang daging sapi dengan nasi putih',
-          price: 35000,
-          stock: 12,
+          name: 'Hoodie Polos',
+          description: 'Hoodie polos dengan kantong depan',
+          price: 200000,
+          stock: 22,
           categoryId: categories[0].id,
-          image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=400&h=300&fit=crop&crop=center'
         }
       }),
-      // Minuman tambahan
+      // Bawahan tambahan
       prisma.product.create({
         data: {
-          name: 'Jus Jeruk',
-          description: 'Jus jeruk segar tanpa gula tambahan',
-          price: 12000,
+          name: 'Celana Chino',
+          description: 'Celana chino slim fit',
+          price: 175000,
           stock: 40,
           categoryId: categories[1].id,
-          image: 'https://images.unsplash.com/photo-1621506289937-a8e4df240d0b?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1473966968600-fa801b869a1a?w=400&h=300&fit=crop&crop=center'
         }
       }),
       prisma.product.create({
         data: {
-          name: 'Es Campur',
-          description: 'Es campur dengan berbagai topping',
-          price: 15000,
+          name: 'Rok A-Line',
+          description: 'Rok A-line warna hitam',
+          price: 150000,
           stock: 25,
           categoryId: categories[1].id,
-          image: 'https://images.unsplash.com/photo-1551024506-0bccd828d307?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1577900232427-18219b8349fd?w=400&h=300&fit=crop&crop=center'
         }
       }),
       prisma.product.create({
         data: {
-          name: 'Cappuccino',
-          description: 'Cappuccino dengan foam susu',
-          price: 18000,
+          name: 'Celana Kulot',
+          description: 'Celana kulot wanita bahan katun',
+          price: 165000,
           stock: 30,
           categoryId: categories[1].id,
-          image: 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1509551388413-e18d0ac5d495?w=400&h=300&fit=crop&crop=center'
         }
       }),
       prisma.product.create({
         data: {
-          name: 'Teh Tarik',
-          description: 'Teh tarik Malaysia yang creamy',
-          price: 8000,
+          name: 'Celana Pendek',
+          description: 'Celana pendek casual pria',
+          price: 120000,
           stock: 50,
           categoryId: categories[1].id,
-          image: 'https://images.unsplash.com/photo-1571934811356-5cc061b6821f?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1565084888279-aca607ecce0c?w=400&h=300&fit=crop&crop=center'
         }
       }),
-      // Snack tambahan
+      // Aksesoris tambahan
       prisma.product.create({
         data: {
-          name: 'Pisang Goreng',
-          description: 'Pisang goreng crispy dengan gula halus',
-          price: 10000,
+          name: 'Syal Rajut',
+          description: 'Syal rajut tebal untuk musim dingin',
+          price: 85000,
           stock: 30,
           categoryId: categories[2].id,
-          image: 'https://images.unsplash.com/photo-1587132137056-bfbf0166836e?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1520903920243-00d872a2d1c9?w=400&h=300&fit=crop&crop=center'
         }
       }),
       prisma.product.create({
         data: {
-          name: 'Tahu Isi',
-          description: 'Tahu isi dengan sayuran dan tauge',
-          price: 6000,
+          name: 'Ikat Pinggang Kulit',
+          description: 'Ikat pinggang kulit asli dengan buckle metal',
+          price: 95000,
           stock: 40,
           categoryId: categories[2].id,
-          image: 'https://images.unsplash.com/photo-1626804475297-41608ea09aeb?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=400&h=300&fit=crop&crop=center'
         }
       }),
       prisma.product.create({
         data: {
-          name: 'Martabak Mini',
-          description: 'Martabak mini telur dengan daun bawang',
-          price: 12000,
+          name: 'Kacamata Fashion',
+          description: 'Kacamata fashion non-resep',
+          price: 120000,
           stock: 20,
           categoryId: categories[2].id,
-          image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=400&h=300&fit=crop&crop=center'
         }
       }),
-      // Dessert
+      // Sepatu
       prisma.product.create({
         data: {
-          name: 'Es Krim Vanilla',
-          description: 'Es krim vanilla premium dengan topping',
-          price: 15000,
+          name: 'Sneakers Casual',
+          description: 'Sneakers casual unisex',
+          price: 350000,
           stock: 25,
           categoryId: categories[3].id,
-          image: 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=400&h=300&fit=crop&crop=center'
         }
       }),
       prisma.product.create({
         data: {
-          name: 'Puding Coklat',
-          description: 'Puding coklat lembut dengan saus karamel',
-          price: 12000,
+          name: 'Sepatu Formal',
+          description: 'Sepatu formal pria kulit sintetis',
+          price: 280000,
           stock: 20,
           categoryId: categories[3].id,
-          image: 'https://images.unsplash.com/photo-1551024506-0bccd828d307?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1614252235316-8c857d38b5f4?w=400&h=300&fit=crop&crop=center'
         }
       }),
       prisma.product.create({
         data: {
-          name: 'Klepon',
-          description: 'Klepon tradisional dengan kelapa parut',
-          price: 8000,
+          name: 'Flat Shoes',
+          description: 'Flat shoes wanita nyaman untuk sehari-hari',
+          price: 200000,
           stock: 35,
           categoryId: categories[3].id,
-          image: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=400&h=300&fit=crop&crop=center'
         }
       })
     ])
@@ -295,116 +295,116 @@ async function addNewProducts() {
     // List of new products to add
     const newProducts = [
       {
-        name: 'Ayam Bakar',
-        description: 'Ayam bakar bumbu kecap dengan lalapan',
-        price: 28000,
+        name: 'Kemeja Denim',
+        description: 'Kemeja denim unisex dengan wash ringan',
+        price: 225000,
         stock: 15,
-        categoryName: 'Makanan',
-        image: 'https://images.unsplash.com/photo-1598103442097-8b74394b95c6?w=400&h=300&fit=crop&crop=center'
+        categoryName: 'Atasan',
+        image: 'https://images.unsplash.com/photo-1598033129183-c4f50c736f10?w=400&h=300&fit=crop&crop=center'
       },
       {
-        name: 'Gado-gado',
-        description: 'Gado-gado dengan bumbu kacang',
-        price: 18000,
+        name: 'Blouse Satin',
+        description: 'Blouse satin elegan untuk wanita',
+        price: 180000,
         stock: 20,
-        categoryName: 'Makanan',
-        image: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=400&h=300&fit=crop&crop=center'
+        categoryName: 'Atasan',
+        image: 'https://images.unsplash.com/photo-1551489186-cf8726f514f8?w=400&h=300&fit=crop&crop=center'
       },
       {
-        name: 'Soto Ayam',
-        description: 'Soto ayam kuning dengan telur dan kerupuk',
-        price: 22000,
+        name: 'Kaos Polo',
+        description: 'Kaos polo pria berbahan katun',
+        price: 120000,
         stock: 18,
-        categoryName: 'Makanan',
-        image: 'https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?w=400&h=300&fit=crop&crop=center'
+        categoryName: 'Atasan',
+        image: 'https://images.unsplash.com/photo-1586363104862-3a5e2ab60d99?w=400&h=300&fit=crop&crop=center'
       },
       {
-        name: 'Rendang',
-        description: 'Rendang daging sapi dengan nasi putih',
-        price: 35000,
+        name: 'Cardigan Rajut',
+        description: 'Cardigan rajut wanita model panjang',
+        price: 235000,
         stock: 12,
-        categoryName: 'Makanan',
-        image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=400&h=300&fit=crop&crop=center'
+        categoryName: 'Atasan',
+        image: 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=400&h=300&fit=crop&crop=center'
       },
       {
-        name: 'Jus Jeruk',
-        description: 'Jus jeruk segar tanpa gula tambahan',
-        price: 12000,
+        name: 'Celana Cargo',
+        description: 'Celana cargo pria dengan banyak kantong',
+        price: 210000,
         stock: 40,
-        categoryName: 'Minuman',
-        image: 'https://images.unsplash.com/photo-1621506289937-a8e4df240d0b?w=400&h=300&fit=crop&crop=center'
+        categoryName: 'Bawahan',
+        image: 'https://images.unsplash.com/photo-1517438476312-10d79c077509?w=400&h=300&fit=crop&crop=center'
       },
       {
-        name: 'Es Campur',
-        description: 'Es campur dengan berbagai topping',
-        price: 15000,
+        name: 'Rok Panjang',
+        description: 'Rok panjang wanita model A-line',
+        price: 175000,
         stock: 25,
-        categoryName: 'Minuman',
-        image: 'https://images.unsplash.com/photo-1551024506-0bccd828d307?w=400&h=300&fit=crop&crop=center'
+        categoryName: 'Bawahan',
+        image: 'https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?w=400&h=300&fit=crop&crop=center'
       },
       {
-        name: 'Cappuccino',
-        description: 'Cappuccino dengan foam susu',
-        price: 18000,
+        name: 'Celana Jogger',
+        description: 'Celana jogger unisex bahan katun',
+        price: 160000,
         stock: 30,
-        categoryName: 'Minuman',
-        image: 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=400&h=300&fit=crop&crop=center'
+        categoryName: 'Bawahan',
+        image: 'https://images.unsplash.com/photo-1552902865-b72c031ac5ea?w=400&h=300&fit=crop&crop=center'
       },
       {
-        name: 'Teh Tarik',
-        description: 'Teh tarik Malaysia yang creamy',
-        price: 8000,
+        name: 'Rok Mini',
+        description: 'Rok mini wanita bahan denim',
+        price: 145000,
         stock: 50,
-        categoryName: 'Minuman',
-        image: 'https://images.unsplash.com/photo-1571934811356-5cc061b6821f?w=400&h=300&fit=crop&crop=center'
+        categoryName: 'Bawahan',
+        image: 'https://images.unsplash.com/photo-1592301933927-35b597393c0a?w=400&h=300&fit=crop&crop=center'
       },
       {
-        name: 'Pisang Goreng',
-        description: 'Pisang goreng crispy dengan gula halus',
-        price: 10000,
+        name: 'Dompet Kulit',
+        description: 'Dompet kulit asli pria',
+        price: 185000,
         stock: 30,
-        categoryName: 'Snack',
-        image: 'https://images.unsplash.com/photo-1587132137056-bfbf0166836e?w=400&h=300&fit=crop&crop=center'
+        categoryName: 'Aksesoris',
+        image: 'https://images.unsplash.com/photo-1627123424574-724758594e93?w=400&h=300&fit=crop&crop=center'
       },
       {
-        name: 'Tahu Isi',
-        description: 'Tahu isi dengan sayuran dan tauge',
-        price: 6000,
+        name: 'Tas Selempang',
+        description: 'Tas selempang wanita bahan kanvas',
+        price: 165000,
         stock: 40,
-        categoryName: 'Snack',
-        image: 'https://images.unsplash.com/photo-1626804475297-41608ea09aeb?w=400&h=300&fit=crop&crop=center'
+        categoryName: 'Aksesoris',
+        image: 'https://images.unsplash.com/photo-1590874103328-eac38a683ce7?w=400&h=300&fit=crop&crop=center'
       },
       {
-        name: 'Martabak Mini',
-        description: 'Martabak mini telur dengan daun bawang',
-        price: 12000,
+        name: 'Jam Tangan',
+        description: 'Jam tangan analog unisex',
+        price: 250000,
         stock: 20,
-        categoryName: 'Snack',
-        image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=400&h=300&fit=crop&crop=center'
+        categoryName: 'Aksesoris',
+        image: 'https://images.unsplash.com/photo-1524805444758-089113d48a6d?w=400&h=300&fit=crop&crop=center'
       },
       {
-        name: 'Es Krim Vanilla',
-        description: 'Es krim vanilla premium dengan topping',
-        price: 15000,
+        name: 'Sandal Jepit',
+        description: 'Sandal jepit casual unisex',
+        price: 75000,
         stock: 25,
-        categoryName: 'Dessert',
-        image: 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=400&h=300&fit=crop&crop=center'
+        categoryName: 'Sepatu',
+        image: 'https://images.unsplash.com/photo-1603487742131-4160ec999306?w=400&h=300&fit=crop&crop=center'
       },
       {
-        name: 'Puding Coklat',
-        description: 'Puding coklat lembut dengan saus karamel',
-        price: 12000,
+        name: 'Boots Kulit',
+        description: 'Boots kulit pria model casual',
+        price: 450000,
         stock: 20,
-        categoryName: 'Dessert',
-        image: 'https://images.unsplash.com/photo-1551024506-0bccd828d307?w=400&h=300&fit=crop&crop=center'
+        categoryName: 'Sepatu',
+        image: 'https://images.unsplash.com/photo-1638247025967-b4e38f787b76?w=400&h=300&fit=crop&crop=center'
       },
       {
-        name: 'Klepon',
-        description: 'Klepon tradisional dengan kelapa parut',
-        price: 8000,
+        name: 'Sepatu Wedges',
+        description: 'Sepatu wedges wanita bahan suede',
+        price: 320000,
         stock: 35,
-        categoryName: 'Dessert',
-        image: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=300&fit=crop&crop=center'
+        categoryName: 'Sepatu',
+        image: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=400&h=300&fit=crop&crop=center'
       }
     ]
 

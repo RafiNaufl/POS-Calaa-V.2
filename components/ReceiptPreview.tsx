@@ -3,6 +3,7 @@
 import React, { useState } from 'react'
 import { PrinterIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import ThermalPrinter from './ThermalPrinter'
+import PrinterIntegration from './PrinterIntegration'
 
 interface Transaction {
   id: string
@@ -72,6 +73,7 @@ const formatDate = (dateString: string) => {
 export default function ReceiptPreview({ transaction, isOpen, onClose, onPrint }: ReceiptPreviewProps) {
   const [receiptHTML, setReceiptHTML] = useState('')
   const [showThermalPrinter, setShowThermalPrinter] = useState(false)
+  const [showPrinterIntegration, setShowPrinterIntegration] = useState(false)
   
   if (!isOpen) return null
 
@@ -269,8 +271,8 @@ export default function ReceiptPreview({ transaction, isOpen, onClose, onPrint }
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-hidden">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
           <h3 className="text-lg font-semibold text-gray-900">Preview Struk</h3>
@@ -283,7 +285,7 @@ export default function ReceiptPreview({ transaction, isOpen, onClose, onPrint }
         </div>
 
         {/* Receipt Preview */}
-        <div className="p-4 overflow-y-auto max-h-[60vh]">
+        <div className="p-4 overflow-y-auto max-h-[calc(90vh-180px)]" style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <div className="bg-white border border-gray-200 rounded-lg p-4 font-mono text-sm" style={{ width: '300px', margin: '0 auto' }}>
             {/* Store Header */}
             <div className="text-center border-b border-dashed border-gray-400 pb-3 mb-3">
@@ -372,7 +374,7 @@ export default function ReceiptPreview({ transaction, isOpen, onClose, onPrint }
         </div>
 
         {/* Actions */}
-        <div className="p-4 border-t bg-gray-50">
+        <div className="p-4 border-t bg-gray-50 flex-shrink-0">
           <div className="flex justify-end space-x-3 mb-3">
             <button
               onClick={onClose}
@@ -389,19 +391,20 @@ export default function ReceiptPreview({ transaction, isOpen, onClose, onPrint }
             </button>
           </div>
           
-          <div className="mt-2">
+          <div className="mt-2 flex space-x-3">
             <button
               onClick={() => {
                 setReceiptHTML(generateReceiptHTML())
                 setShowThermalPrinter(true)
-                // Tombol ini sekarang hanya menampilkan komponen ThermalPrinter
-                // Komponen ThermalPrinter akan otomatis mencoba terhubung dan mencetak
+                setShowPrinterIntegration(false)
               }}
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center w-full"
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center w-1/2"
             >
               <PrinterIcon className="h-5 w-5 mr-2" />
-              Cetak ke Printer Thermal
+              Cetak ke Printer Thermal (Web Bluetooth)
             </button>
+            
+
           </div>
           
           {showThermalPrinter && receiptHTML && (
@@ -413,6 +416,16 @@ export default function ReceiptPreview({ transaction, isOpen, onClose, onPrint }
               }}
               onPrintError={(error) => {
                 console.error('Print error:', error)
+              }}
+            />
+          )}
+          
+          {showPrinterIntegration && receiptHTML && (
+            <PrinterIntegration 
+              receiptHTML={receiptHTML} 
+              onClose={() => {
+                setShowPrinterIntegration(false)
+                onPrint()
               }}
             />
           )}

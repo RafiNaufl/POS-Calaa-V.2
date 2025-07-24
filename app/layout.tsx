@@ -8,8 +8,8 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'POS Restaurant - Point of Sale System',
-  description: 'Sistem Point of Sale untuk restoran dengan fitur lengkap',
+  title: 'POS Toko Baju - Point of Sale System',
+  description: 'Sistem Point of Sale untuk toko baju dengan fitur lengkap',
 }
 
 export default function RootLayout({
