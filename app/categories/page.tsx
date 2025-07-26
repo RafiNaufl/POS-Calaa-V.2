@@ -27,41 +27,67 @@ export default function CategoriesPage() {
   const [formData, setFormData] = useState({ name: '', description: '' })
   const [formErrors, setFormErrors] = useState({ name: '', description: '' })
 
-  // Sample data - in real app, this would come from API
+  // Fetch categories from API
   useEffect(() => {
-    setTimeout(() => {
-      setCategories([
-        {
-          id: '1',
-          name: 'Makanan Utama',
-          description: 'Hidangan utama seperti nasi, mie, dan lauk pauk',
-          productCount: 8,
-          createdAt: '2024-01-15',
-        },
-        {
-          id: '2',
-          name: 'Minuman',
-          description: 'Berbagai jenis minuman panas dan dingin',
-          productCount: 12,
-          createdAt: '2024-01-15',
-        },
-        {
-          id: '3',
-          name: 'Dessert',
-          description: 'Makanan penutup dan camilan manis',
-          productCount: 6,
-          createdAt: '2024-01-15',
-        },
-        {
-          id: '4',
-          name: 'Snack',
-          description: 'Camilan ringan dan gorengan',
-          productCount: 4,
-          createdAt: '2024-01-15',
-        },
-      ])
-      setLoading(false)
-    }, 1000)
+    const fetchCategories = async () => {
+      try {
+        const response = await fetch('/api/categories')
+        if (!response.ok) {
+          throw new Error('Failed to fetch categories')
+        }
+        const data = await response.json()
+        
+        // Transform data to match our component's format
+        const transformedCategories = data.map((category: any) => ({
+          id: category.id,
+          name: category.name,
+          description: category.description || '',
+          productCount: category._count?.products || 0,
+          createdAt: new Date(category.createdAt).toISOString().split('T')[0],
+        }))
+        
+        setCategories(transformedCategories)
+      } catch (error) {
+        console.error('Error fetching categories:', error)
+        toast.error('Gagal memuat data kategori')
+        
+        // Fallback to sample data if API fails - using fashion categories
+        setCategories([
+          {
+            id: '1',
+            name: 'Atasan',
+            description: 'Berbagai jenis pakaian atasan seperti kemeja, kaos, dan sweater',
+            productCount: 8,
+            createdAt: '2024-01-15',
+          },
+          {
+            id: '2',
+            name: 'Bawahan',
+            description: 'Berbagai jenis pakaian bawahan seperti celana, rok, dan jeans',
+            productCount: 12,
+            createdAt: '2024-01-15',
+          },
+          {
+            id: '3',
+            name: 'Aksesoris',
+            description: 'Berbagai jenis aksesoris fashion seperti topi, dompet, dan tas',
+            productCount: 6,
+            createdAt: '2024-01-15',
+          },
+          {
+            id: '4',
+            name: 'Sepatu',
+            description: 'Berbagai jenis sepatu seperti sneakers, boots, dan sandal',
+            productCount: 4,
+            createdAt: '2024-01-15',
+          },
+        ])
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    fetchCategories()
   }, [])
 
   const validateForm = () => {
@@ -80,34 +106,83 @@ export default function CategoriesPage() {
     return !errors.name && !errors.description
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     if (!validateForm()) {
       return
     }
 
-    if (editingCategory) {
-      // Update category
-      setCategories(categories.map(cat => 
-        cat.id === editingCategory.id 
-          ? { ...cat, name: formData.name, description: formData.description }
-          : cat
-      ))
-      toast.success('Kategori berhasil diperbarui')
-      setEditingCategory(null)
-    } else {
-      // Add new category
-      const newCategory: Category = {
-        id: Date.now().toString(),
-        name: formData.name,
-        description: formData.description,
-        productCount: 0,
-        createdAt: new Date().toISOString().split('T')[0],
+    try {
+      if (editingCategory) {
+        // Update category via API
+        const response = await fetch('/api/categories', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            id: editingCategory.id,
+            name: formData.name,
+            description: formData.description,
+          }),
+        })
+        
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to update category')
+        }
+        
+        const updatedCategory = await response.json()
+        
+        // Update local state
+        setCategories(categories.map(cat => 
+          cat.id === editingCategory.id 
+            ? { 
+                ...cat, 
+                name: updatedCategory.name, 
+                description: updatedCategory.description || ''
+              }
+            : cat
+        ))
+        
+        toast.success('Kategori berhasil diperbarui')
+        setEditingCategory(null)
+      } else {
+        // Add new category via API
+        const response = await fetch('/api/categories', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: formData.name,
+            description: formData.description,
+          }),
+        })
+        
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to create category')
+        }
+        
+        const newCategory = await response.json()
+        
+        // Add to local state
+        setCategories([...categories, {
+          id: newCategory.id,
+          name: newCategory.name,
+          description: newCategory.description || '',
+          productCount: 0,
+          createdAt: new Date(newCategory.createdAt).toISOString().split('T')[0],
+        }])
+        
+        toast.success('Kategori berhasil ditambahkan')
+        setShowAddForm(false)
       }
-      setCategories([...categories, newCategory])
-      toast.success('Kategori berhasil ditambahkan')
-      setShowAddForm(false)
+    } catch (error) {
+      console.error('Error saving category:', error)
+      toast.error(`Gagal menyimpan kategori: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
     
     setFormData({ name: '', description: '' })
@@ -120,7 +195,7 @@ export default function CategoriesPage() {
     setFormErrors({ name: '', description: '' })
   }
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     const category = categories.find(cat => cat.id === id)
     
     if (category && category.productCount > 0) {
@@ -129,8 +204,24 @@ export default function CategoriesPage() {
     }
     
     if (confirm('Apakah Anda yakin ingin menghapus kategori ini?')) {
-      setCategories(categories.filter(cat => cat.id !== id))
-      toast.success('Kategori berhasil dihapus')
+      try {
+        // Delete category via API
+        const response = await fetch(`/api/categories?id=${id}`, {
+          method: 'DELETE',
+        })
+        
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to delete category')
+        }
+        
+        // Update local state
+        setCategories(categories.filter(cat => cat.id !== id))
+        toast.success('Kategori berhasil dihapus')
+      } catch (error) {
+        console.error('Error deleting category:', error)
+        toast.error(`Gagal menghapus kategori: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
     }
   }
 

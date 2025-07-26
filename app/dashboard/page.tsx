@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
+import useSWR from 'swr'
 import Navbar from '@/components/Navbar'
 import {
   ShoppingCartIcon,
@@ -15,6 +16,7 @@ import {
   UserGroupIcon,
   TicketIcon,
   ReceiptPercentIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 
@@ -41,23 +43,95 @@ export default function DashboardPage() {
   })
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetchDashboardStats()
-  }, [])
+  // Fetcher function for SWR
+  const fetcher = async (url: string) => {
+    const response = await fetch(url, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
+    })
+    if (!response.ok) {
+      throw new Error('Failed to fetch data')
+    }
+    return response.json()
+  }
 
-  const fetchDashboardStats = async () => {
+  // Fetch dashboard stats with SWR for real-time updates
+  const { data: dashboardData, error: dashboardError, isLoading: dashboardLoading, mutate } = useSWR(
+    '/api/dashboard/stats', 
+    fetcher, 
+    {
+      refreshInterval: 2000, // Refresh every 2 seconds untuk data lebih real-time
+      revalidateOnFocus: true,
+      dedupingInterval: 0, // Tidak menggunakan deduping untuk memastikan data selalu baru
+      revalidateOnReconnect: true, // Revalidasi saat koneksi terhubung kembali
+      revalidateIfStale: true,
+      revalidateOnMount: true,
+      shouldRetryOnError: true,
+      errorRetryInterval: 1000,
+      focusThrottleInterval: 1000
+    }
+  )
+  
+  // Function to manually refresh dashboard data
+  const refreshDashboardStats = () => {
+    setLoading(true)
+    mutate() // This triggers a revalidation of the SWR cache
+    toast.success('Memperbarui data dashboard...')
+  }
+  
+  // Function to reset transaction data
+  const resetTransactionData = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/dashboard/stats')
+      const response = await fetch('/api/dashboard/reset', {
+        method: 'POST',
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      })
       
-      if (!response.ok) {
-        throw new Error('Failed to fetch dashboard stats')
+      if (response.ok) {
+        toast.success('Data transaksi berhasil direset')
+        // Force revalidation of the SWR cache
+        await mutate({ 
+          revalidate: true, 
+          populateCache: true,
+          rollbackOnError: false
+        })
+      } else {
+        const error = await response.json()
+        toast.error(error.message || 'Gagal mereset data transaksi')
       }
-      
-      const data = await response.json()
-      setStats(data)
     } catch (error) {
-      console.error('Error fetching dashboard stats:', error)
+      console.error('Error resetting transaction data:', error)
+      toast.error('Gagal mereset data transaksi')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Update stats when data is available
+  useEffect(() => {
+    if (dashboardData) {
+      setStats(dashboardData)
+      setLoading(false)
+    }
+  }, [dashboardData])
+
+  // Set loading state
+  useEffect(() => {
+    setLoading(dashboardLoading)
+  }, [dashboardLoading])
+
+  // Handle errors with fallback data
+  useEffect(() => {
+    if (dashboardError) {
+      console.error('Error fetching dashboard stats:', dashboardError)
       toast.error('Gagal memuat statistik dashboard')
       // Fallback to sample data
       setStats({
@@ -69,10 +143,9 @@ export default function DashboardPage() {
         topProducts: [],
         salesByCategory: [],
       })
-    } finally {
       setLoading(false)
     }
-  }
+  }, [dashboardError])
 
   const menuItems = [
     {
@@ -301,7 +374,7 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
-            ) : stats.recentTransactions.length > 0 ? (
+            ) : stats.recentTransactions && stats.recentTransactions.length > 0 ? (
               <div className="space-y-3">
                 {stats.recentTransactions.map((transaction: any) => (
                   <div key={transaction.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
@@ -362,7 +435,7 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
-            ) : stats.topProducts.length > 0 ? (
+            ) : stats.topProducts && stats.topProducts.length > 0 ? (
               <div className="space-y-3">
                 {stats.topProducts.map((item: any, index: number) => (
                   <div key={item.product?.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
@@ -416,11 +489,30 @@ export default function DashboardPage() {
               Lihat Laporan
             </Link>
             <button
-              onClick={fetchDashboardStats}
+              onClick={refreshDashboardStats}
               className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
             >
               Refresh Data
             </button>
+            {userRole === 'ADMIN' && (
+              <button
+                onClick={resetTransactionData}
+                className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center"
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <div className="animate-spin h-5 w-5 mr-2 border-t-2 border-white rounded-full" />
+                    Memuat...
+                  </>
+                ) : (
+                  <>
+                    <TrashIcon className="h-5 w-5 mr-2" />
+                    Reset Transaksi
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
       </main>

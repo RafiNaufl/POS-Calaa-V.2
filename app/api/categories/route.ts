@@ -77,8 +77,19 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   
   try {
+    // Check if ID is in URL params first
     const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
+    let id = searchParams.get('id')
+
+    // If not in URL params, try to get from request body
+    if (!id) {
+      try {
+        const body = await request.json()
+        id = body.id
+      } catch (e) {
+        // If parsing body fails, continue with null id
+      }
+    }
 
     if (!id) {
       return NextResponse.json(

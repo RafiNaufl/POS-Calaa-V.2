@@ -1,0 +1,13 @@
+{
+  "items": [
+    {
+      "productId": "1",
+      "quantity": 1,
+      "price": 10000
+    }
+  ],
+  "subtotal": 10000,
+  "tax": 1000,
+  "total": 11000,
+  "paymentMethod": "CASH"
+}

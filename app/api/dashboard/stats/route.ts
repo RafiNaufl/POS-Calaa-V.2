@@ -126,10 +126,15 @@ export async function GET(request: NextRequest) {
       lowStockItems,
       recentTransactions,
       topProducts: topProductsWithDetails,
-      salesByCategory: categoryStatsArray
+      salesByCategory: categoryStatsArray,
+      timestamp: new Date().getTime() // Tambahkan timestamp untuk memastikan data selalu baru
     }
 
-    return NextResponse.json(stats)
+    // Set header untuk mencegah caching
+    const response = NextResponse.json(stats)
+    response.headers.set('Cache-Control', 'no-store, max-age=0')
+    response.headers.set('Pragma', 'no-cache')
+    return response
   } catch (error) {
     console.error('Error fetching dashboard stats:', error)
     return NextResponse.json(

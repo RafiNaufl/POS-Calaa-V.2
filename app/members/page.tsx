@@ -72,32 +72,37 @@ export default function MembersPage() {
   // Sort and filter members
   const sortedAndFilteredMembers = members
     .filter(member => {
-      if (filterBy === 'active') return member.transactionCount > 0
-      if (filterBy === 'inactive') return member.transactionCount === 0
+      // Pastikan member valid sebelum melakukan filter
+      if (!member || typeof member !== 'object') return false
+      
+      if (filterBy === 'active') return (member.transactionCount || 0) > 0
+      if (filterBy === 'inactive') return (member.transactionCount || 0) === 0
       return true
     })
     .sort((a, b) => {
+      // Pastikan properti yang digunakan untuk sorting ada dan valid
       let aValue: any, bValue: any
+      
       switch (sortBy) {
         case 'name':
-          aValue = a.name.toLowerCase()
-          bValue = b.name.toLowerCase()
+          aValue = (a.name || '').toLowerCase()
+          bValue = (b.name || '').toLowerCase()
           break
         case 'points':
-          aValue = a.points
-          bValue = b.points
+          aValue = a.points || 0
+          bValue = b.points || 0
           break
         case 'totalSpent':
-          aValue = a.totalSpent
-          bValue = b.totalSpent
+          aValue = a.totalSpent || 0
+          bValue = b.totalSpent || 0
           break
         case 'createdAt':
-          aValue = new Date(a.createdAt)
-          bValue = new Date(b.createdAt)
+          aValue = new Date(a.createdAt || new Date())
+          bValue = new Date(b.createdAt || new Date())
           break
         default:
-          aValue = a.name.toLowerCase()
-          bValue = b.name.toLowerCase()
+          aValue = (a.name || '').toLowerCase()
+          bValue = (b.name || '').toLowerCase()
       }
       
       if (sortOrder === 'asc') {
@@ -119,14 +124,40 @@ export default function MembersPage() {
         params.append('search', searchTerm)
       }
       
+      console.log('Fetching members with params:', params.toString())
       const response = await fetch(`/api/members?${params}`)
       const data = await response.json()
       
-      setMembers(data.members || [])
-      setTotalPages(data.pagination?.totalPages || 1)
+      console.log('API response data:', data)
+      
+      // Validasi data yang diterima
+      if (data && Array.isArray(data.members)) {
+        // Pastikan setiap member memiliki properti yang diperlukan
+        const validatedMembers = data.members.map((member: any) => ({
+          id: member.id || '',
+          name: member.name || 'Unnamed Member',
+          phone: member.phone || '',
+          email: member.email || '',
+          points: member.points || 0,
+          totalSpent: member.totalSpent || 0,
+          transactionCount: member._count?.transactions || 0,
+          createdAt: member.createdAt || new Date().toISOString(),
+          lastVisit: member.lastVisit || null
+        }))
+        
+        setMembers(validatedMembers)
+        setTotalPages(data.pagination?.totalPages || 1)
+      } else {
+        console.error('Invalid data format received:', data)
+        setMembers([])
+        setTotalPages(1)
+        setError('Format data tidak valid')
+      }
     } catch (error) {
       console.error('Error fetching members:', error)
       setError('Gagal memuat data member')
+      setMembers([])
+      setTotalPages(1)
     } finally {
       setLoading(false)
     }
@@ -139,30 +170,45 @@ export default function MembersPage() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     setCurrentPage(1)
-    fetchMembers()
+    try {
+      console.log('Searching with term:', searchTerm)
+      fetchMembers()
+    } catch (error) {
+      console.error('Error in handleSearch:', error)
+      setError('Terjadi kesalahan saat mencari member')
+    }
   }
 
   const openModal = (member?: Member) => {
-    if (member) {
-      setEditingMember(member)
-      setFormData({
-        name: member.name,
-        phone: member.phone || '',
-        email: member.email || '',
-        points: member.points
-      })
-    } else {
-      setEditingMember(null)
-      setFormData({
-        name: '',
-        phone: '',
-        email: '',
-        points: 0
-      })
+    try {
+      console.log('openModal called with member:', member)
+      
+      if (member) {
+        setEditingMember(member)
+        setFormData({
+          name: member.name,
+          phone: member.phone || '',
+          email: member.email || '',
+          points: member.points
+        })
+      } else {
+        // Explicitly set to null when adding new member
+        setEditingMember(null)
+        setFormData({
+          name: '',
+          phone: '',
+          email: '',
+          points: 0
+        })
+      }
+      
+      setShowModal(true)
+      setError('')
+      setSuccess('')
+    } catch (error) {
+      console.error('Error in openModal:', error)
+      setError('Terjadi kesalahan saat membuka form')
     }
-    setShowModal(true)
-    setError('')
-    setSuccess('')
   }
 
   const closeModal = () => {
@@ -178,11 +224,34 @@ export default function MembersPage() {
     setSuccess('')
     
     try {
+      console.log('handleSubmit called, editingMember:', editingMember)
+      console.log('formData:', formData)
+      
+      // Validasi data form
+      if (!formData.name || formData.name.trim() === '') {
+        setError('Nama member harus diisi')
+        return
+      }
+      
       const url = '/api/members'
       const method = editingMember ? 'PUT' : 'POST'
+      
+      // Pastikan data yang dikirim valid
       const body = editingMember 
-        ? { id: editingMember.id, ...formData }
-        : formData
+        ? { 
+            id: editingMember.id, 
+            name: formData.name.trim(),
+            phone: formData.phone || null,
+            email: formData.email || null,
+            points: formData.points || 0
+          }
+        : { 
+            name: formData.name.trim(),
+            phone: formData.phone || null,
+            email: formData.email || null
+          }
+      
+      console.log('Sending request with body:', body)
       
       const response = await fetch(url, {
         method,
@@ -192,9 +261,18 @@ export default function MembersPage() {
         body: JSON.stringify(body)
       })
       
+      // Tangani respons dengan lebih hati-hati
+      let responseData
+      try {
+        responseData = await response.json()
+        console.log('API response:', responseData)
+      } catch (jsonError) {
+        console.error('Error parsing response JSON:', jsonError)
+        throw new Error('Gagal memproses respons dari server')
+      }
+      
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Gagal menyimpan member')
+        throw new Error(responseData.error || 'Gagal menyimpan member')
       }
       
       setSuccess(editingMember ? 'Member berhasil diperbarui!' : 'Member berhasil ditambahkan!')
@@ -203,7 +281,8 @@ export default function MembersPage() {
         fetchMembers()
       }, 1500)
     } catch (error: any) {
-      setError(error.message)
+      console.error('Error in handleSubmit:', error)
+      setError(error.message || 'Terjadi kesalahan saat menyimpan data')
     }
   }
 

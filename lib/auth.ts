@@ -64,9 +64,12 @@ export const authOptions: NextAuthOptions = {
       return token
     },
     async session({ session, token }) {
-      if (token) {
+      if (token && token.sub) {
         session.user.id = token.sub as string
         session.user.role = token.role as 'ADMIN' | 'CASHIER' | 'MANAGER'
+      } else {
+        // Handle case where token or token.sub is missing
+        console.error('Missing token or token.sub in session callback')
       }
       return session
     }

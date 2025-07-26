@@ -124,24 +124,82 @@ export default function PromotionsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
     try {
+      // Validasi form
+      if (!formData.name) {
+        alert('Nama promosi harus diisi')
+        return
+      }
+
+      if (formData.discountValue <= 0) {
+        alert('Nilai diskon harus lebih dari 0')
+        return
+      }
+
+      if (formData.type === 'BULK_DISCOUNT' && (!formData.minQuantity || formData.minQuantity <= 0)) {
+        alert('Kuantitas minimum harus diisi dan lebih dari 0')
+        return
+      }
+
+      if (formData.type === 'BUY_X_GET_Y' && (!formData.buyQuantity || formData.buyQuantity <= 0 || !formData.getQuantity || formData.getQuantity <= 0)) {
+        alert('Kuantitas beli dan gratis harus diisi dan lebih dari 0')
+        return
+      }
+
+      if ((formData.type === 'PRODUCT_DISCOUNT' || formData.type === 'BUY_X_GET_Y') && formData.productIds.length === 0) {
+        alert('Pilih setidaknya satu produk untuk promosi ini')
+        return
+      }
+
+      if ((formData.type === 'CATEGORY_DISCOUNT' || formData.type === 'BULK_DISCOUNT') && formData.categoryIds.length === 0) {
+        alert('Pilih setidaknya satu kategori untuk promosi ini')
+        return
+      }
+
+      if (!formData.startDate || !formData.endDate) {
+        alert('Tanggal mulai dan tanggal berakhir harus diisi')
+        return
+      }
+
       const url = editingPromotion ? `/api/promotions/${editingPromotion.id}` : '/api/promotions'
       const method = editingPromotion ? 'PUT' : 'POST'
+      
+      // Format tanggal ke ISO string yang valid untuk Prisma
+      const formatDateForPrisma = (dateString: string) => {
+        try {
+          // Pastikan format tanggal valid dengan menambahkan 'Z' untuk UTC timezone
+          // Format input: YYYY-MM-DDThh:mm
+          // Format output: YYYY-MM-DDThh:mm:00.000Z
+          const date = new Date(dateString);
+          return date.toISOString();
+        } catch (error) {
+          console.error('Error formatting date:', error);
+          throw new Error(`Format tanggal tidak valid: ${dateString}`);
+        }
+      };
+      
+      // Siapkan data untuk dikirim
+      const dataToSend = {
+        ...formData,
+        discountValue: Number(formData.discountValue),
+        minQuantity: formData.minQuantity || undefined,
+        buyQuantity: formData.buyQuantity || undefined,
+        getQuantity: formData.getQuantity || undefined,
+        productIds: formData.productIds.length > 0 ? formData.productIds : undefined,
+        categoryIds: formData.categoryIds.length > 0 ? formData.categoryIds : undefined,
+        startDate: formatDateForPrisma(formData.startDate),
+        endDate: formatDateForPrisma(formData.endDate)
+      }
+
+      console.log('Sending data:', dataToSend)
       
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          ...formData,
-          discountValue: Number(formData.discountValue),
-          minQuantity: formData.minQuantity || undefined,
-          buyQuantity: formData.buyQuantity || undefined,
-          getQuantity: formData.getQuantity || undefined,
-          productIds: formData.productIds.length > 0 ? formData.productIds : undefined,
-          categoryIds: formData.categoryIds.length > 0 ? formData.categoryIds : undefined
-        })
+        body: JSON.stringify(dataToSend)
       })
 
       if (response.ok) {
@@ -149,13 +207,15 @@ export default function PromotionsPage() {
         setEditingPromotion(null)
         resetForm()
         fetchPromotions()
+        alert(`Promosi berhasil ${editingPromotion ? 'diperbarui' : 'dibuat'}`)
       } else {
-        const error = await response.json()
-        alert(error.error || `Error ${editingPromotion ? 'updating' : 'creating'} promotion`)
+        const errorData = await response.json()
+        console.error('API error response:', errorData)
+        alert(errorData.error || `Error ${editingPromotion ? 'memperbarui' : 'membuat'} promosi`)
       }
     } catch (error) {
       console.error(`Error ${editingPromotion ? 'updating' : 'creating'} promotion:`, error)
-      alert(`Error ${editingPromotion ? 'updating' : 'creating'} promotion`)
+      alert(`Terjadi kesalahan saat ${editingPromotion ? 'memperbarui' : 'membuat'} promosi. Silakan coba lagi.`)
     }
   }
 
@@ -178,23 +238,61 @@ export default function PromotionsPage() {
   }
 
   const handleEdit = (promotion: Promotion) => {
-    setEditingPromotion(promotion)
-    setFormData({
-      name: promotion.name,
-      description: promotion.description || '',
-      type: promotion.type,
-      discountValue: promotion.discountType === 'PERCENTAGE' ? promotion.discountValue : promotion.discountValue,
-      discountType: promotion.discountType,
-      minQuantity: promotion.minQuantity || undefined,
-      buyQuantity: promotion.buyQuantity || undefined,
-      getQuantity: promotion.getQuantity || undefined,
-      startDate: new Date(promotion.startDate).toISOString().slice(0, 16),
-      endDate: new Date(promotion.endDate).toISOString().slice(0, 16),
-      productIds: promotion.productPromotions.map(pp => pp.product.id),
-      categoryIds: promotion.categoryPromotions.map(cp => cp.category.id),
-      isActive: promotion.isActive
-    })
-    setShowForm(true)
+    try {
+      setEditingPromotion(promotion)
+      
+      // Format tanggal dengan aman untuk input datetime-local
+      // Format yang dibutuhkan: YYYY-MM-DDThh:mm
+      let startDateFormatted = '';
+      let endDateFormatted = '';
+      
+      if (promotion.startDate) {
+        try {
+          const startDate = new Date(promotion.startDate);
+          if (!isNaN(startDate.getTime())) { // Pastikan tanggal valid
+            startDateFormatted = startDate.toISOString().slice(0, 16);
+          }
+        } catch (error) {
+          console.error('Error formatting start date:', error);
+        }
+      }
+      
+      if (promotion.endDate) {
+        try {
+          const endDate = new Date(promotion.endDate);
+          if (!isNaN(endDate.getTime())) { // Pastikan tanggal valid
+            endDateFormatted = endDate.toISOString().slice(0, 16);
+          }
+        } catch (error) {
+          console.error('Error formatting end date:', error);
+        }
+      }
+      
+      // Jika tanggal tidak bisa diformat, tampilkan pesan error
+      if (!startDateFormatted || !endDateFormatted) {
+        console.warn('Beberapa tanggal tidak bisa diformat dengan benar');
+      }
+      
+      setFormData({
+        name: promotion.name,
+        description: promotion.description || '',
+        type: promotion.type,
+        discountValue: promotion.discountValue,
+        discountType: promotion.discountType,
+        minQuantity: promotion.minQuantity || undefined,
+        buyQuantity: promotion.buyQuantity || undefined,
+        getQuantity: promotion.getQuantity || undefined,
+        startDate: startDateFormatted,
+        endDate: endDateFormatted,
+        productIds: promotion.productPromotions?.map(pp => pp.product.id) || [],
+        categoryIds: promotion.categoryPromotions?.map(cp => cp.category.id) || [],
+        isActive: promotion.isActive
+      })
+      setShowForm(true)
+    } catch (error) {
+      console.error('Error editing promotion:', error);
+      alert('Terjadi kesalahan saat mengedit promosi. Silakan coba lagi.');
+    }
   }
 
   const handleCloseForm = () => {
@@ -574,9 +672,25 @@ export default function PromotionsPage() {
               {/* Product Selection */}
               {(formData.type === 'PRODUCT_DISCOUNT' || formData.type === 'BUY_X_GET_Y') && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Pilih Produk
-                  </label>
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Pilih Produk
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Pilih semua produk
+                        const allProductIds = products.map(product => product.id);
+                        setFormData({
+                          ...formData,
+                          productIds: allProductIds
+                        });
+                      }}
+                      className="text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      Pilih Semua
+                    </button>
+                  </div>
                   <div className="max-h-40 overflow-y-auto border border-gray-300 rounded-lg p-2">
                     {products.map((product) => (
                       <label key={product.id} className="flex items-center space-x-2 p-1">

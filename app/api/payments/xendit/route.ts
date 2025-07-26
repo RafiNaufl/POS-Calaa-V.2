@@ -36,33 +36,51 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Ensure we have a valid base URL
+    const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
+    
+    // Create consistent return URLs for all payment methods
+    const successReturnUrl = `${baseUrl}/cashier?payment=success&transaction_id=${transactionId}`
+    const failureReturnUrl = `${baseUrl}/cashier?payment=failed&transaction_id=${transactionId}`
+    const cancelReturnUrl = `${baseUrl}/cashier?payment=cancelled&transaction_id=${transactionId}`
+    
+    console.log('Success return URL:', successReturnUrl)
+    
     // Configure channel properties based on payment method
     switch (paymentMethod.toLowerCase()) {
       case 'ovo':
         chargeData.channel_properties = {
-          mobile_number: customerPhone || '+6281234567890'
+          mobile_number: customerPhone || '+6281234567890',
+          success_redirect_url: successReturnUrl,
+          failure_redirect_url: failureReturnUrl
         }
         break
       case 'dana':
         chargeData.channel_properties = {
-          mobile_number: customerPhone || '+6281234567890'
+          mobile_number: customerPhone || '+6281234567890',
+          success_redirect_url: successReturnUrl,
+          failure_redirect_url: failureReturnUrl
         }
         break
       case 'linkaja':
         chargeData.channel_properties = {
-          mobile_number: customerPhone || '+6281234567890'
+          mobile_number: customerPhone || '+6281234567890',
+          success_redirect_url: successReturnUrl,
+          failure_redirect_url: failureReturnUrl
         }
         break
       case 'shopeepay':
         chargeData.channel_properties = {
-          success_redirect_url: `${process.env.NEXTAUTH_URL}/cashier?payment=success&transaction_id=${transactionId}`,
-          failure_redirect_url: `${process.env.NEXTAUTH_URL}/cashier?payment=failed`
+          success_redirect_url: successReturnUrl,
+          failure_redirect_url: failureReturnUrl,
+          cancel_redirect_url: cancelReturnUrl
         }
         break
       case 'gopay':
         chargeData.channel_properties = {
-          success_redirect_url: `${process.env.NEXTAUTH_URL}/cashier?payment=success&transaction_id=${transactionId}`,
-          failure_redirect_url: `${process.env.NEXTAUTH_URL}/cashier?payment=failed`
+          success_redirect_url: successReturnUrl,
+          failure_redirect_url: failureReturnUrl,
+          cancel_redirect_url: cancelReturnUrl
         }
         break
       default:
@@ -75,6 +93,9 @@ export async function POST(request: NextRequest) {
     // Create the payment request
     const { PaymentRequest } = xendit
     const idempotencyKey = `pos-${transactionId}-${Date.now()}`
+    
+    // Use the baseUrl and return URLs already defined above
+    // No need to redeclare the return URL variables
 
     const paymentRequestData = {
       referenceId: idempotencyKey,
@@ -85,9 +106,9 @@ export async function POST(request: NextRequest) {
         ewallet: {
           channelCode: paymentMethod.toUpperCase(),
           channelProperties: {
-            successReturnUrl: `${process.env.NEXTAUTH_URL}/cashier?payment=success&transaction_id=${transactionId}`,
-            failureReturnUrl: `${process.env.NEXTAUTH_URL}/cashier?payment=failed`,
-            cancelReturnUrl: `${process.env.NEXTAUTH_URL}/cashier?payment=cancelled`
+            successReturnUrl: successReturnUrl,
+            failureReturnUrl: failureReturnUrl,
+            cancelReturnUrl: cancelReturnUrl
           }
         },
         reusability: PaymentMethodReusability.OneTimeUse

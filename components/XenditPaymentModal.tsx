@@ -172,12 +172,27 @@ export default function XenditPaymentModal({
         },
         body: JSON.stringify({
           ...transactionData,
-          paymentMethod: 'E_WALLET'
+          paymentMethod: 'E_WALLET',
+          // Ensure both fields are sent for compatibility
+          promoDiscount: transactionData.promotionDiscount || transactionData.promoDiscount || 0,
+          promotionDiscount: transactionData.promotionDiscount || transactionData.promoDiscount || 0
         })
       })
 
       if (!transactionResponse.ok) {
-        throw new Error('Gagal membuat transaksi')
+        const errorData = await transactionResponse.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || 'Gagal membuat transaksi';
+        console.error('Transaction creation error:', errorData);
+        
+        // Jika error terkait sesi atau user tidak ditemukan, lempar error spesifik
+        if (errorMessage.includes('Sesi pengguna tidak valid') || 
+            errorMessage.includes('User not found in database') ||
+            errorMessage.includes('No user in session') ||
+            errorMessage.includes('Missing user ID')) {
+          throw new Error('Sesi pengguna tidak valid. Silakan login ulang.');
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const transaction = await transactionResponse.json()
@@ -202,29 +217,52 @@ export default function XenditPaymentModal({
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.message || 'Gagal membuat pembayaran')
+        console.error('Xendit payment creation error:', data);
+        throw new Error(data.message || data.error || 'Gagal membuat pembayaran')
       }
 
       // Update transaction with Xendit details
-      await fetch('/api/transactions', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          id: actualTransactionId,
-          paymentStatus: 'PENDING',
-          xenditChargeId: data.charge_id,
-          xenditReferenceId: data.reference_id
+      try {
+        const updateResponse = await fetch('/api/transactions', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            id: actualTransactionId,
+            paymentStatus: 'PENDING',
+            xenditChargeId: data.charge_id,
+            xenditReferenceId: data.reference_id,
+            amount: amount,
+            paymentMethod: selectedMethod,
+            transactionId: actualTransactionId
+          })
         })
-      })
+        
+        if (!updateResponse.ok) {
+          console.warn('Failed to update transaction with Xendit details, but payment was created:', 
+            await updateResponse.text().catch(() => 'Unknown error'));
+          // Continue anyway since the payment was created
+        }
+      } catch (updateError) {
+        console.warn('Error updating transaction with Xendit details:', updateError);
+        // Continue anyway since the payment was created
+      }
 
       setPaymentCharge(data)
       setPaymentStatus(data.status)
 
     } catch (error: any) {
       console.error('Payment creation error:', error)
-      setError(error.message || 'Gagal membuat pembayaran')
+      
+      // Provide more specific error messages based on the error
+      if (error.message.includes('foreign key constraint')) {
+        setError('Gagal membuat transaksi: Terdapat masalah dengan data pengguna. Silakan coba login ulang.')
+      } else if (error.message.includes('session')) {
+        setError('Gagal membuat transaksi: Sesi pengguna tidak valid. Silakan login ulang.')
+      } else {
+        setError(error.message || 'Gagal membuat pembayaran. Silakan coba lagi.')
+      }
     } finally {
       setIsCreatingPayment(false)
     }
@@ -235,6 +273,24 @@ export default function XenditPaymentModal({
       window.open(paymentCharge.checkout_url, '_blank')
     } else if (paymentCharge?.deep_link) {
       window.location.href = paymentCharge.deep_link
+    }
+  }
+
+  const handleClose = () => {
+    if (paymentStatus === 'SUCCEEDED') {
+      onSuccess(paymentCharge)
+    } else if (error) {
+      // Jika error terkait sesi, pastikan pesan error yang dikirim sesuai
+      if (error.includes('Sesi pengguna tidak valid') || 
+          error.includes('User not found in database') ||
+          error.includes('No user in session') ||
+          error.includes('Missing user ID')) {
+        onError('Sesi pengguna tidak valid. Silakan login ulang.')
+      } else {
+        onError(error)
+      }
+    } else {
+      onClose()
     }
   }
 

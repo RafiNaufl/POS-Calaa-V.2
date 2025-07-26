@@ -15,7 +15,8 @@ import {
   TagIcon,
   DocumentTextIcon,
   CreditCardIcon,
-  UsersIcon
+  UsersIcon,
+  BanknotesIcon
 } from '@heroicons/react/24/outline'
 
 interface NavItem {
@@ -32,6 +33,7 @@ const navigation: NavItem[] = [
   { name: 'Member', href: '/members', icon: UserIcon, roles: ['CASHIER'] },
   { name: 'Transaksi', href: '/transactions', icon: ShoppingCartIcon, roles: ['ADMIN', 'CASHIER'] },
   { name: 'Laporan', href: '/reports', icon: DocumentTextIcon, roles: ['ADMIN', 'CASHIER'] },
+  { name: 'Biaya Operasional', href: '/operational-expenses', icon: BanknotesIcon, roles: ['ADMIN'] },
   { name: 'Pengguna', href: '/users', icon: UsersIcon, roles: ['ADMIN'] },
 ]
 

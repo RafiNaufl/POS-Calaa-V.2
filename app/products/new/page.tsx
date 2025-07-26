@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
+import useSWR from 'swr'
 import {
   ArrowLeftIcon,
   PhotoIcon,
@@ -38,15 +39,43 @@ export default function NewProductPage() {
   })
   const [errors, setErrors] = useState<Partial<ProductForm>>({})
 
-  // Load categories
+  // Fetcher function for SWR
+  const fetcher = async (url: string) => {
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error('Failed to fetch data')
+    }
+    return response.json()
+  }
+
+  // Fetch categories with SWR
+  const { data: categoriesData, error: categoriesError } = useSWR('/api/categories', fetcher)
+
+  // Set categories data
   useEffect(() => {
-    setCategories([
-      { id: '1', name: 'Makanan Utama' },
-      { id: '2', name: 'Minuman' },
-      { id: '3', name: 'Dessert' },
-      { id: '4', name: 'Snack' },
-    ])
-  }, [])
+    if (categoriesData) {
+      const transformedCategories = categoriesData.map((category: any) => ({
+        id: category.id.toString(),
+        name: category.name
+      }))
+      setCategories(transformedCategories)
+    }
+  }, [categoriesData])
+
+  // Handle category errors with fallback data
+  useEffect(() => {
+    if (categoriesError) {
+      console.error('Error fetching categories:', categoriesError)
+      toast.error('Gagal memuat data kategori')
+      // Fallback to sample data if API fails - using fashion categories
+      setCategories([
+        { id: '1', name: 'Atasan' },
+        { id: '2', name: 'Bawahan' },
+        { id: '3', name: 'Aksesoris' },
+        { id: '4', name: 'Sepatu' },
+      ])
+    }
+  }, [categoriesError])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -96,25 +125,39 @@ export default function NewProductPage() {
     setLoading(true)
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500))
-      
-      // In real app, this would be an API call
+      // Prepare product data
       const productData = {
-        ...form,
+        name: form.name,
+        description: form.description,
         price: Number(form.price),
         stock: Number(form.stock),
-        id: Date.now().toString(),
-        isActive: true,
-        createdAt: new Date().toISOString(),
+        categoryId: form.categoryId,
+        image: form.image,
+        isActive: true
       }
       
-      console.log('Product created:', productData)
+      // Make actual API call
+      const response = await fetch('/api/products', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(productData),
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to create product')
+      }
+      
+      const result = await response.json()
+      console.log('Product created:', result)
       
       toast.success('Produk berhasil ditambahkan!')
       router.push('/products')
     } catch (error) {
-      toast.error('Gagal menambahkan produk')
+      console.error('Error creating product:', error)
+      toast.error(`Gagal menambahkan produk: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setLoading(false)
     }

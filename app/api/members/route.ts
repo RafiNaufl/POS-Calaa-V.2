@@ -136,12 +136,40 @@ export async function PUT(request: NextRequest) {
 // DELETE - Delete member
 export async function DELETE(request: NextRequest) {
   try {
+    // Check if ID is in URL params first
     const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
+    let id = searchParams.get('id')
+
+    // If not in URL params, try to get from request body
+    if (!id) {
+      try {
+        const body = await request.json()
+        id = body.id
+      } catch (e) {
+        // If parsing body fails, continue with null id
+      }
+    }
 
     if (!id) {
       return NextResponse.json(
         { error: 'Member ID is required' },
+        { status: 400 }
+      )
+    }
+
+    // Check if member has transactions before deleting
+    const memberWithTransactions = await prisma.member.findUnique({
+      where: { id },
+      include: {
+        _count: {
+          select: { transactions: true }
+        }
+      }
+    })
+
+    if (memberWithTransactions && memberWithTransactions._count && memberWithTransactions._count.transactions > 0) {
+      return NextResponse.json(
+        { error: 'Cannot delete member with transaction history' },
         { status: 400 }
       )
     }

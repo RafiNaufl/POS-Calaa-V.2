@@ -7,6 +7,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import Navbar from '@/components/Navbar'
 import XenditPaymentModal from '@/components/XenditPaymentModal'
+import useSWR from 'swr'
 import {
   ShoppingCartIcon,
   PlusIcon,
@@ -158,13 +159,21 @@ export default function CashierPage() {
   const [showVoucherList, setShowVoucherList] = useState(false)
   const [showPromotionList, setShowPromotionList] = useState(false)
 
-  // Fetch products and categories from API
-  useEffect(() => {
-    fetchProducts()
-    fetchCategories()
-    fetchAvailableVouchers()
-    fetchAvailablePromotions()
-  }, [])
+  // Fetch data using SWR
+  const fetcher = (url: string) => fetch(url).then(res => {
+    if (!res.ok) throw new Error('Failed to fetch data')
+    return res.json()
+  })
+  
+  const { data: productsData, error: productsError, isLoading: productsLoading } = useSWR('/api/products', fetcher, {
+    refreshInterval: 5000 // refresh every 5 seconds
+  })
+  
+  const { data: categoriesData, error: categoriesError } = useSWR('/api/categories', fetcher)
+  
+  const { data: vouchersData, error: vouchersError } = useSWR('/api/vouchers?active=true', fetcher)
+  
+  const { data: promotionsData, error: promotionsError } = useSWR('/api/promotions?active=true', fetcher)
 
   // Handle payment success from Xendit redirect
   useEffect(() => {
@@ -173,79 +182,117 @@ export default function CashierPage() {
     const transactionId = urlParams.get('transaction_id')
     
     if (paymentStatus === 'success' && transactionId) {
+      console.log('Payment success detected in URL, transaction ID:', transactionId)
+      
+      // Update transaction status to PAID
+      fetch('/api/transactions', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: transactionId,
+          paymentStatus: 'PAID',
+          status: 'COMPLETED'
+        })
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Failed to update transaction status')
+        }
+        return response.json()
+      })
+      .then(data => {
+        console.log('Transaction status updated:', data)
+        // Clear URL parameters
+        window.history.replaceState({}, document.title, window.location.pathname)
+        
+        // Handle successful payment
+        handleXenditPaymentSuccess({ id: transactionId })
+      })
+      .catch(error => {
+        console.error('Error updating transaction status:', error)
+        toast.error('Terjadi kesalahan saat memperbarui status transaksi')
+        // Still try to handle the payment success even if update fails
+        window.history.replaceState({}, document.title, window.location.pathname)
+        handleXenditPaymentSuccess({ id: transactionId })
+      })
+    } else if (paymentStatus === 'failed' || paymentStatus === 'cancelled') {
+      // Handle failed or cancelled payment
+      toast.error('Pembayaran tidak berhasil. Silakan coba lagi.')
       // Clear URL parameters
       window.history.replaceState({}, document.title, window.location.pathname)
-      
-      // Handle successful payment
-      handleXenditPaymentSuccess({ id: transactionId })
     }
   }, [])
 
-  const fetchProducts = async () => {
-    try {
-      setLoading(true)
-      const response = await fetch('/api/products')
-      if (!response.ok) {
-        throw new Error('Failed to fetch products')
-      }
-      const data = await response.json()
-      setProducts(data)
-    } catch (error) {
-      console.error('Error fetching products:', error)
-      setError('Gagal memuat data produk')
-    } finally {
+  // Process products data from SWR
+  useEffect(() => {
+    if (productsData) {
+      setProducts(productsData)
       setLoading(false)
     }
-  }
+  }, [productsData])
 
-  const fetchCategories = async () => {
-    try {
-      const response = await fetch('/api/categories')
-      if (!response.ok) {
-        throw new Error('Failed to fetch categories')
-      }
-      const data = await response.json()
-      setCategories(data)
-    } catch (error) {
-      console.error('Error fetching categories:', error)
+  // Process categories data from SWR
+  useEffect(() => {
+    if (categoriesData) {
+      setCategories(categoriesData)
     }
-  }
+  }, [categoriesData])
 
-  const fetchAvailableVouchers = async () => {
-    try {
-      const response = await fetch('/api/vouchers?active=true')
-      if (response.ok) {
-        const data = await response.json()
-        const activeVouchers = data.filter((voucher: Voucher) => {
-          const now = new Date()
-          const startDate = new Date(voucher.startDate)
-          const endDate = new Date(voucher.endDate)
-          return voucher.isActive && now >= startDate && now <= endDate
-        })
-        setAvailableVouchers(activeVouchers)
-      }
-    } catch (error) {
-      console.error('Error fetching vouchers:', error)
+  // Process vouchers data from SWR
+  useEffect(() => {
+    if (vouchersData) {
+      const activeVouchers = vouchersData.filter((voucher: Voucher) => {
+        const now = new Date()
+        const startDate = new Date(voucher.startDate)
+        const endDate = new Date(voucher.endDate)
+        return voucher.isActive && now >= startDate && now <= endDate
+      })
+      setAvailableVouchers(activeVouchers)
     }
-  }
+  }, [vouchersData])
 
-  const fetchAvailablePromotions = async () => {
-    try {
-      const response = await fetch('/api/promotions?active=true')
-      if (response.ok) {
-        const data = await response.json()
-        const activePromotions = data.filter((promotion: any) => {
-          const now = new Date()
-          const startDate = new Date(promotion.startDate)
-          const endDate = new Date(promotion.endDate)
-          return promotion.isActive && now >= startDate && now <= endDate
-        })
-        setAvailablePromotions(activePromotions)
-      }
-    } catch (error) {
-      console.error('Error fetching promotions:', error)
+  // Process promotions data from SWR
+  useEffect(() => {
+    if (promotionsData) {
+      const activePromotions = promotionsData.filter((promotion: any) => {
+        const now = new Date()
+        const startDate = new Date(promotion.startDate)
+        const endDate = new Date(promotion.endDate)
+        return promotion.isActive && now >= startDate && now <= endDate
+      })
+      setAvailablePromotions(activePromotions)
     }
-  }
+  }, [promotionsData])
+  
+  // Handle errors
+  useEffect(() => {
+    if (productsError) {
+      console.error('Error fetching products:', productsError)
+      setError('Gagal memuat data produk')
+      setLoading(false)
+    }
+  }, [productsError])
+  
+  useEffect(() => {
+    if (categoriesError) {
+      console.error('Error fetching categories:', categoriesError)
+      toast.error('Gagal memuat kategori')
+    }
+  }, [categoriesError])
+  
+  useEffect(() => {
+    if (vouchersError) {
+      console.error('Error fetching vouchers:', vouchersError)
+    }
+  }, [vouchersError])
+  
+  useEffect(() => {
+    if (promotionsError) {
+      console.error('Error fetching promotions:', promotionsError)
+    }
+  }, [promotionsError])
 
   // Filter products
   const filteredProducts = products.filter(product => {
@@ -510,7 +557,8 @@ export default function CashierPage() {
         pointsUsed: pointsToUse,
         voucherCode: appliedVoucher?.code || null,
         voucherDiscount: totals.voucherDiscount,
-        promoDiscount: totals.promotionDiscount
+        promoDiscount: totals.promotionDiscount,
+        promotionDiscount: totals.promotionDiscount // Mengirim kedua field untuk kompatibilitas
       }
       
       // For E-Wallet payments, open Xendit modal
@@ -530,7 +578,9 @@ export default function CashierPage() {
       })
       
       if (!response.ok) {
-        throw new Error('Failed to process transaction')
+        const errorData = await response.json()
+        console.error('Transaction error:', errorData)
+        throw new Error(errorData.message || 'Failed to process transaction')
       }
       
       const transaction = await response.json()
@@ -554,44 +604,83 @@ export default function CashierPage() {
       setCompletedTransaction(transactionWithItems)
       setShowTransactionModal(true)
       
-      // Clear cart and refresh products
+      // Clear cart
       clearCart()
-      fetchProducts() // Refresh to get updated stock
+      // SWR will automatically revalidate data
       
       toast.success('Pembayaran berhasil!')
     } catch (error) {
       console.error('Payment failed:', error)
-      toast.error('Pembayaran gagal! ' + (error instanceof Error ? error.message : 'Unknown error'))
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      
+      // Tampilkan pesan error yang lebih spesifik
+      if (errorMessage.includes('Sesi pengguna tidak valid') || errorMessage.includes('User not found in database')) {
+        toast.error('Sesi pengguna tidak valid. Silakan login ulang.')
+        // Redirect ke halaman login setelah beberapa detik
+        setTimeout(() => {
+          window.location.href = '/login'
+        }, 3000)
+      } else {
+        toast.error('Pembayaran gagal! ' + errorMessage)
+      }
     } finally {
       setIsProcessing(false)
     }
   }
 
   const handleXenditPaymentSuccess = async (transaction: any) => {
+    console.log('Handling Xendit payment success for transaction ID:', transaction.id)
     setShowXenditModal(false)
     setPendingTransaction(null)
+    setIsProcessing(true)
     
     try {
       // Fetch the complete transaction from database
       const response = await fetch(`/api/transactions/${transaction.id}`)
+      console.log('Transaction fetch response status:', response.status)
+      
       if (response.ok) {
         const completeTransaction = await response.json()
+        console.log('Fetched transaction details:', completeTransaction)
+        
+        // Get transaction items if available, otherwise use cart
+        let transactionItems = cart
+        if (completeTransaction.items && completeTransaction.items.length > 0) {
+          // If the API returns items with product details
+          transactionItems = completeTransaction.items.map((item: any) => ({
+            ...item.product,
+            quantity: item.quantity,
+            price: item.price
+          }))
+        } else if (completeTransaction.TransactionItem && completeTransaction.TransactionItem.length > 0) {
+          // Alternative format that might be returned
+          transactionItems = completeTransaction.TransactionItem.map((item: any) => ({
+            ...item.product,
+            quantity: item.quantity,
+            price: item.price
+          }))
+        }
         
         // Set completed transaction data for modal
         const transactionWithItems = {
           ...completeTransaction,
-          items: cart, // Use cart items for display
-          appliedPromotions: appliedPromotions
+          items: transactionItems,
+          appliedPromotions: appliedPromotions,
+          paymentMethod: completeTransaction.paymentMethod || 'E_WALLET',
+          customerName: completeTransaction.customerName || customerName,
+          createdAt: completeTransaction.createdAt || new Date(),
+          total: completeTransaction.total || 0
         }
         
         setCompletedTransaction(transactionWithItems)
         setShowTransactionModal(true)
       } else {
+        console.warn('Failed to fetch transaction details, using fallback')
         // Fallback to original behavior if fetch fails
         const transactionWithItems = {
           id: transaction.id,
           items: cart,
-          total: transaction.total,
+          total: transaction.total || calculateTotal().total,
           paymentMethod: 'E_WALLET',
           customerName: customerName || undefined,
           createdAt: new Date(),
@@ -612,7 +701,7 @@ export default function CashierPage() {
       const transactionWithItems = {
         id: transaction.id,
         items: cart,
-        total: transaction.total,
+        total: transaction.total || calculateTotal().total,
         paymentMethod: 'E_WALLET',
         customerName: customerName || undefined,
         createdAt: new Date(),
@@ -626,20 +715,33 @@ export default function CashierPage() {
       
       setCompletedTransaction(transactionWithItems)
       setShowTransactionModal(true)
+    } finally {
+      setIsProcessing(false)
     }
     
-    // Clear cart and refresh products
+    // Clear cart
     clearCart()
-    fetchProducts()
+    // SWR will automatically revalidate data
     
     toast.success('Pembayaran E-Wallet berhasil!')
   }
 
   const handleXenditPaymentError = (error: string) => {
+    console.error('Xendit payment error:', error)
     setShowXenditModal(false)
     setPendingTransaction(null)
     setIsProcessing(false)
-    toast.error('Pembayaran E-Wallet gagal: ' + error)
+    
+    // Tampilkan pesan error yang lebih spesifik
+    if (error.includes('Sesi pengguna tidak valid') || error.includes('User not found in database')) {
+      toast.error('Sesi pengguna tidak valid. Silakan login ulang.')
+      // Redirect ke halaman login setelah beberapa detik
+      setTimeout(() => {
+        window.location.href = '/login'
+      }, 3000)
+    } else {
+      toast.error('Pembayaran E-Wallet gagal: ' + error)
+    }
   }
 
   const printReceipt = () => {
@@ -667,7 +769,7 @@ export default function CashierPage() {
       ${pointsUsed > 0 ? `Diskon Poin (${pointsUsed} poin): -${formatCurrency(pointDiscount)}` : ''}
       ${voucherDiscount > 0 ? `Diskon Voucher (${appliedVoucher?.code}): -${formatCurrency(voucherDiscount)}` : ''}
       ${promotionDiscount > 0 ? `Diskon Promosi: -${formatCurrency(promotionDiscount)}` : ''}
-      ${appliedPromotions.length > 0 ? `\n===== PROMOSI DITERAPKAN =====\n${appliedPromotions.map(p => `- ${p.promotion.name}: ${formatCurrency(p.discount)}`).join('\n')}` : ''}
+      ${appliedPromotions.length > 0 ? `\n===== PROMOSI DITERAPKAN =====\n${appliedPromotions.map(p => `- ${p.promotion?.name || 'Promosi'}: ${formatCurrency(p.discount)}`).join('\n')}` : ''}
       Total: ${formatCurrency(total)}
       
       Metode Pembayaran: ${paymentMethod}
@@ -935,7 +1037,10 @@ export default function CashierPage() {
                   <h3 className="text-red-700 text-lg font-semibold mb-2">Terjadi Kesalahan</h3>
                   <p className="text-red-600 mb-6">{error}</p>
                   <button
-                    onClick={fetchProducts}
+                    onClick={() => {
+                      setError('')
+                      // SWR will automatically revalidate
+                    }}
                     className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"
                   >
                     🔄 Muat Ulang
@@ -1045,7 +1150,7 @@ export default function CashierPage() {
 
           {/* Cart Section */}
           <div className="xl:col-span-1">
-            <div className="bg-white rounded-lg border border-gray-200 p-6 sticky top-6">
+            <div className="bg-white rounded-lg border border-gray-200 p-6 sticky top-6 max-h-[calc(100vh-4rem)] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-900 flex items-center">
                   <ShoppingCartIcon className="h-5 w-5 mr-2 text-blue-600" />
@@ -1157,7 +1262,7 @@ export default function CashierPage() {
                             {appliedPromotions.map((applied, index) => (
                               <div key={index} className="flex items-center justify-between p-2 bg-green-100 rounded-lg">
                                 <div>
-                                  <p className="text-sm font-medium text-green-800">{applied.promotion.name}</p>
+                                  <p className="text-sm font-medium text-green-800">{applied.promotion?.name || 'Promosi'}</p>
                                   <p className="text-xs text-green-600">Diskon: {formatCurrency(applied.discount)}</p>
                                 </div>
                                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
@@ -1512,7 +1617,7 @@ export default function CashierPage() {
                       <div className="space-y-1">
                         {completedTransaction.appliedPromotions.map((applied: AppliedPromotion, index: number) => (
                           <div key={index} className="flex justify-between text-green-600">
-                            <span className="text-sm text-gray-600">Diskon {applied.promotion.name}:</span>
+                            <span className="text-sm text-gray-600">Diskon {applied.promotion?.name || 'Promosi'}:</span>
                             <span className="text-sm text-gray-900">-{formatCurrency(applied.discount)}</span>
                           </div>
                         ))}

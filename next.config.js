@@ -1,3 +1,6 @@
+// Import konfigurasi EventEmitter untuk mengatasi MaxListenersExceededWarning
+require('./lib/eventEmitter');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {

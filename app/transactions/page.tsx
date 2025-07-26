@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import useSWR from 'swr'
 import {
   ArrowLeftIcon,
   MagnifyingGlassIcon,
@@ -54,143 +55,87 @@ export default function TransactionsPage() {
   const [showReceiptPreview, setShowReceiptPreview] = useState(false)
   const [receiptTransaction, setReceiptTransaction] = useState<Transaction | null>(null)
 
-  // Fetch transactions from API
-  const fetchTransactions = async () => {
-    try {
-      setLoading(true)
-      const response = await fetch('/api/transactions')
-      if (!response.ok) {
-        throw new Error('Failed to fetch transactions')
-      }
-      const data = await response.json()
-      
-      // Transform API data to match component interface
-      const transformedTransactions: Transaction[] = data.transactions.map((transaction: any) => {
-        const createdAt = transaction.createdAt ? new Date(transaction.createdAt) : new Date()
-        const isValidDate = createdAt instanceof Date && !isNaN(createdAt.getTime())
-        const validDate = isValidDate ? createdAt : new Date()
-        
-        // Get voucher code from voucher usages
-        const voucherUsage = transaction.voucherUsages && transaction.voucherUsages.length > 0 
-          ? transaction.voucherUsages[0] 
-          : null
-        
-        return {
-          id: transaction.id,
-          date: validDate.toISOString(),
-          time: validDate.toLocaleTimeString('id-ID'),
-          items: transaction.items.map((item: any) => ({
-            id: item.id,
-            name: item.product.name,
-            quantity: item.quantity,
-            price: item.price,
-            total: item.subtotal
-          })),
-          subtotal: transaction.total,
-          tax: transaction.tax,
-          total: transaction.finalTotal,
-          voucherDiscount: transaction.voucherDiscount || 0,
-          promoDiscount: transaction.promoDiscount || 0,
-          voucherCode: voucherUsage?.voucher?.code || null,
-          paymentMethod: transaction.paymentMethod,
-          status: transaction.status,
-          cashier: transaction.user.name,
-          customer: transaction.customerName,
-          customerPhone: transaction.customerPhone,
-          customerEmail: transaction.customerEmail
-        }
-      })
-      
-      setTransactions(transformedTransactions)
-    } catch (error) {
-      console.error('Error fetching transactions:', error)
-    } finally {
-      setLoading(false)
+  // Fetch transactions from API using SWR for real-time updates
+  const fetcher = async (url: string) => {
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error('Failed to fetch transactions')
     }
+    return response.json()
   }
 
-  useEffect(() => {
-    fetchTransactions()
-  }, [])
+  const { data, error, isLoading, mutate } = useSWR('/api/transactions', fetcher, {
+    refreshInterval: 5000, // Refresh every 5 seconds
+    revalidateOnFocus: true,
+    dedupingInterval: 2000
+  })
 
-  // Keep sample data as fallback for demo
-  const sampleTransactions: Transaction[] = [
-    {
-      id: 'TXN-001',
-      date: '2024-01-21',
-      time: '14:30',
-      items: [
-        { id: '1', name: 'Nasi Goreng Spesial', quantity: 2, price: 25000, total: 50000 },
-        { id: '2', name: 'Es Teh Manis', quantity: 2, price: 5000, total: 10000 },
-      ],
-      subtotal: 60000,
-      tax: 6000,
-      total: 66000,
-      paymentMethod: 'CASH',
-      status: 'COMPLETED',
-      cashier: 'Admin User',
-      customer: 'John Doe',
-    },
-    {
-      id: 'TXN-002',
-      date: '2024-01-21',
-      time: '15:45',
-      items: [
-        { id: '3', name: 'Ayam Bakar', quantity: 1, price: 30000, total: 30000 },
-        { id: '4', name: 'Jus Jeruk', quantity: 1, price: 12000, total: 12000 },
-      ],
-      subtotal: 42000,
-      tax: 4200,
-      total: 46200,
-          paymentMethod: 'CARD',
-          status: 'COMPLETED',
-          cashier: 'Admin User',
-        },
-        {
-          id: 'TXN-003',
-          date: '2024-01-21',
-          time: '16:20',
-          items: [
-            { id: '5', name: 'Mie Ayam Bakso', quantity: 3, price: 20000, total: 60000 },
-          ],
-          subtotal: 60000,
-          tax: 6000,
-          total: 66000,
-          paymentMethod: 'DIGITAL_WALLET',
-          status: 'COMPLETED',
-          cashier: 'Admin User',
-        },
-        {
-          id: 'TXN-004',
-          date: '2024-01-20',
-          time: '12:15',
-          items: [
-            { id: '6', name: 'Gado-gado', quantity: 1, price: 18000, total: 18000 },
-            { id: '7', name: 'Es Campur', quantity: 1, price: 15000, total: 15000 },
-          ],
-          subtotal: 33000,
-          tax: 3300,
-          total: 36300,
-          paymentMethod: 'CASH',
-          status: 'CANCELLED',
-          cashier: 'Admin User',
-        },
-        {
-          id: 'TXN-005',
-          date: '2024-01-20',
-          time: '18:30',
-          items: [
-            { id: '8', name: 'Sate Ayam', quantity: 2, price: 25000, total: 50000 },
-            { id: '9', name: 'Lontong Sayur', quantity: 1, price: 15000, total: 15000 },
-          ],
-          subtotal: 65000,
-          tax: 6500,
-          total: 71500,
-          paymentMethod: 'CARD',
-          status: 'PENDING',
-          cashier: 'Admin User',
-        },
-      ]
+  // Transform API data to match component interface
+  const transformTransactions = (data: any): Transaction[] => {
+    if (!data || !data.transactions) return []
+    
+    return data.transactions.map((transaction: any) => {
+      const createdAt = transaction.createdAt ? new Date(transaction.createdAt) : new Date()
+      const isValidDate = createdAt instanceof Date && !isNaN(createdAt.getTime())
+      const validDate = isValidDate ? createdAt : new Date()
+      
+      // Get voucher code from voucher usages
+      const voucherUsage = transaction.voucherUsages && transaction.voucherUsages.length > 0 
+        ? transaction.voucherUsages[0] 
+        : null
+      
+      return {
+        id: transaction.id,
+        date: validDate.toISOString(),
+        time: validDate.toLocaleTimeString('id-ID'),
+        items: transaction.items.map((item: any) => ({
+          id: item.id,
+          name: item.product.name,
+          quantity: item.quantity,
+          price: item.price,
+          total: item.subtotal
+        })),
+        subtotal: transaction.total,
+        tax: transaction.tax,
+        total: transaction.finalTotal,
+        voucherDiscount: transaction.voucherDiscount || 0,
+        promoDiscount: transaction.promoDiscount || 0,
+        voucherCode: voucherUsage?.voucher?.code || null,
+        paymentMethod: transaction.paymentMethod,
+        status: transaction.status,
+        cashier: transaction.user.name,
+        customer: transaction.customerName,
+        customerPhone: transaction.customerPhone,
+        customerEmail: transaction.customerEmail
+      }
+    })
+  }
+
+  // Set transactions data from SWR
+  useEffect(() => {
+    if (data) {
+      const transformedTransactions = transformTransactions(data)
+      setTransactions(transformedTransactions)
+      setLoading(false)
+    }
+  }, [data])
+
+  // Set loading state based on SWR loading state
+  useEffect(() => {
+    setLoading(isLoading)
+  }, [isLoading])
+
+  // Handle errors without using fallback data
+  useEffect(() => {
+    if (error) {
+      console.error('Error fetching transactions:', error)
+      // Don't use sample data, just show empty state
+      setTransactions([])
+      setLoading(false)
+    }
+  }, [error])
+
+  // No sample data needed anymore
 
   // Filter transactions based on search and filters
   useEffect(() => {
@@ -216,21 +161,27 @@ export default function TransactionsPage() {
 
     // Payment method filter
     if (paymentFilter !== 'ALL') {
-      filtered = filtered.filter((transaction) => transaction.paymentMethod === paymentFilter)
+      // Ensure we're comparing the same format of payment method
+      filtered = filtered.filter((transaction) => {
+        // Normalize payment method names for comparison
+        const normalizedTransactionPayment = transaction.paymentMethod.toUpperCase();
+        const normalizedFilterPayment = paymentFilter.toUpperCase();
+        return normalizedTransactionPayment === normalizedFilterPayment;
+      })
     }
 
     // Date filter
     if (dateFilter !== 'ALL') {
       const today = new Date()
-      const filterDate = new Date()
+      today.setHours(0, 0, 0, 0) // Set to beginning of today
+      const filterDate = new Date(today)
       
       switch (dateFilter) {
         case 'TODAY':
-          filterDate.setHours(0, 0, 0, 0)
+          // Already set to beginning of today
           break
         case 'YESTERDAY':
           filterDate.setDate(today.getDate() - 1)
-          filterDate.setHours(0, 0, 0, 0)
           break
         case 'WEEK':
           filterDate.setDate(today.getDate() - 7)
@@ -241,8 +192,26 @@ export default function TransactionsPage() {
       }
       
       filtered = filtered.filter((transaction) => {
-        const transactionDate = new Date(transaction.date)
-        return transactionDate >= filterDate
+        // Ensure we're working with date objects
+        let transactionDate;
+        if (typeof transaction.date === 'string') {
+          // Handle different date formats
+          if (transaction.date.includes('T')) {
+            // ISO format
+            transactionDate = new Date(transaction.date);
+          } else {
+            // Simple date format (YYYY-MM-DD)
+            const [year, month, day] = transaction.date.split('-').map(Number);
+            transactionDate = new Date(year, month - 1, day);
+          }
+        } else {
+          transactionDate = new Date(transaction.date);
+        }
+        
+        // Set to beginning of the day for fair comparison
+        transactionDate.setHours(0, 0, 0, 0);
+        
+        return transactionDate >= filterDate;
       })
     }
 

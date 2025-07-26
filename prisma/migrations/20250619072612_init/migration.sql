@@ -182,6 +182,34 @@ CREATE TABLE "CategoryPromotion" (
     CONSTRAINT "CategoryPromotion_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "operational_expense" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "amount" DOUBLE PRECISION NOT NULL,
+    "category" TEXT NOT NULL,
+    "date" TIMESTAMP(3) NOT NULL,
+    "description" TEXT,
+    "receipt" TEXT,
+    "createdBy" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "operational_expense_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE INDEX "operational_expense_date_idx" ON "operational_expense"("date");
+
+-- CreateIndex
+CREATE INDEX "operational_expense_category_idx" ON "operational_expense"("category");
+
+-- CreateIndex
+CREATE INDEX "operational_expense_createdBy_idx" ON "operational_expense"("createdBy");
+
+-- AddForeignKey
+ALTER TABLE "operational_expense" ADD CONSTRAINT "operational_expense_createdBy_fkey" FOREIGN KEY ("createdBy") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 

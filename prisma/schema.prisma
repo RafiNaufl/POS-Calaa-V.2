@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,196 +8,202 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  password  String
-  role      String   @default("CASHIER")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  transactions Transaction[]
-  voucherUsages VoucherUsage[]
+  id                  String                @id @default(cuid())
+  email               String                @unique
+  name                String
+  password            String
+  role                String                @default("CASHIER")
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  transactions        Transaction[]
+  voucherUsages       VoucherUsage[]
+  operational_expense operational_expense[]
 }
 
 model Category {
-  id          String    @id @default(cuid())
-  name        String    @unique
-  description String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  
-  products Product[]
+  id                 String              @id @default(cuid())
+  name               String              @unique
+  description        String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
   categoryPromotions CategoryPromotion[]
+  products           Product[]
 }
 
 model Product {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  price       Float
-  stock       Int      @default(0)
-  image       String?
-  categoryId  String
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  category        Category          @relation(fields: [categoryId], references: [id])
-  transactionItems TransactionItem[]
+  id                String             @id @default(cuid())
+  name              String
+  description       String?
+  price             Float
+  stock             Int                @default(0)
+  image             String?
+  categoryId        String
+  isActive          Boolean            @default(true)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  category          Category           @relation(fields: [categoryId], references: [id])
   productPromotions ProductPromotion[]
+  transactionItems  TransactionItem[]
 }
 
 model Transaction {
-  id          String            @id @default(cuid())
-  total       Float
-  tax         Float             @default(0)
-  discount    Float             @default(0)
-  voucherDiscount Float         @default(0)
-  promoDiscount Float           @default(0)
-  finalTotal  Float
-  paymentMethod String          @default("CASH")
-  status        String          @default("COMPLETED")
-  paymentStatus String?         // PENDING, PAID, FAILED for Xendit payments
-  xenditChargeId String?        // Xendit charge ID
-  xenditReferenceId String?     // Xendit reference ID
-  paidAt      DateTime?         // When payment was completed
-  failureReason String?         // Reason for payment failure
-  userId      String
-  customerName String?
-  customerPhone String?
-  customerEmail String?
-  memberId    String?
-  pointsEarned Int              @default(0)
-  pointsUsed  Int              @default(0)
-  notes       String?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  
-  user         User              @relation(fields: [userId], references: [id])
-  member       Member?           @relation(fields: [memberId], references: [id])
-  items        TransactionItem[]
-  pointHistory PointHistory[]
-  voucherUsages VoucherUsage[]
+  id                String            @id @default(cuid())
+  total             Float
+  tax               Float             @default(0)
+  discount          Float             @default(0)
+  voucherDiscount   Float             @default(0)
+  promoDiscount     Float             @default(0)
+  finalTotal        Float
+  paymentMethod     String            @default("CASH")
+  status            String            @default("COMPLETED")
+  paymentStatus     String?
+  xenditChargeId    String?
+  xenditReferenceId String?
+  paidAt            DateTime?
+  failureReason     String?
+  userId            String
+  customerName      String?
+  customerPhone     String?
+  customerEmail     String?
+  memberId          String?
+  pointsEarned      Int               @default(0)
+  pointsUsed        Int               @default(0)
+  notes             String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  pointHistory      PointHistory[]
+  member            Member?           @relation(fields: [memberId], references: [id])
+  user              User              @relation(fields: [userId], references: [id])
+  items             TransactionItem[]
+  voucherUsages     VoucherUsage[]
 }
 
 model TransactionItem {
-  id            String @id @default(cuid())
+  id            String      @id @default(cuid())
   quantity      Int
   price         Float
   subtotal      Float
   transactionId String
   productId     String
-  
-  transaction Transaction @relation(fields: [transactionId], references: [id])
-  product     Product     @relation(fields: [productId], references: [id])
+  product       Product     @relation(fields: [productId], references: [id])
+  transaction   Transaction @relation(fields: [transactionId], references: [id])
 }
 
 model Member {
-  id          String   @id @default(cuid())
-  name        String
-  phone       String?  @unique
-  email       String?  @unique
-  points      Int      @default(0)
-  totalSpent  Float    @default(0)
-  joinDate    DateTime @default(now())
-  lastVisit   DateTime @default(now())
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  transactions Transaction[]
-  pointHistory PointHistory[]
+  id            String         @id @default(cuid())
+  name          String
+  phone         String?        @unique
+  email         String?        @unique
+  points        Int            @default(0)
+  totalSpent    Float          @default(0)
+  joinDate      DateTime       @default(now())
+  lastVisit     DateTime       @default(now())
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  pointHistory  PointHistory[]
+  transactions  Transaction[]
   voucherUsages VoucherUsage[]
 }
 
 model PointHistory {
-  id          String   @id @default(cuid())
-  memberId    String
-  points      Int      // positive for earned, negative for redeemed
-  type        String   // EARNED, REDEEMED, EXPIRED, ADJUSTED
-  description String?
+  id            String       @id @default(cuid())
+  memberId      String
+  points        Int
+  type          String
+  description   String?
   transactionId String?
-  createdAt   DateTime @default(now())
-  
-  member      Member       @relation(fields: [memberId], references: [id])
-  transaction Transaction? @relation(fields: [transactionId], references: [id])
+  createdAt     DateTime     @default(now())
+  member        Member       @relation(fields: [memberId], references: [id])
+  transaction   Transaction? @relation(fields: [transactionId], references: [id])
 }
 
 model Voucher {
-  id          String   @id @default(cuid())
-  code        String   @unique
-  name        String
-  description String?
-  type        String   // PERCENTAGE, FIXED_AMOUNT, FREE_SHIPPING
-  value       Float    // percentage (0-100) or fixed amount
-  minPurchase Float?   // minimum purchase amount to use voucher
-  maxDiscount Float?   // maximum discount amount (for percentage type)
-  usageLimit  Int?     // total usage limit
-  usageCount  Int      @default(0)
-  perUserLimit Int?    // usage limit per user
-  startDate   DateTime
-  endDate     DateTime
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
+  id           String         @id @default(cuid())
+  code         String         @unique
+  name         String
+  description  String?
+  type         String
+  value        Float
+  minPurchase  Float?
+  maxDiscount  Float?
+  usageLimit   Int?
+  usageCount   Int            @default(0)
+  perUserLimit Int?
+  startDate    DateTime
+  endDate      DateTime
+  isActive     Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
   transactions VoucherUsage[]
 }
 
 model VoucherUsage {
-  id            String   @id @default(cuid())
-  voucherId     String
-  transactionId String
-  userId        String?
-  memberId      String?
+  id             String      @id @default(cuid())
+  voucherId      String
+  transactionId  String
+  userId         String?
+  memberId       String?
   discountAmount Float
-  createdAt     DateTime @default(now())
-  
-  voucher     Voucher      @relation(fields: [voucherId], references: [id])
-  transaction Transaction  @relation(fields: [transactionId], references: [id])
-  user        User?        @relation(fields: [userId], references: [id])
-  member      Member?      @relation(fields: [memberId], references: [id])
+  createdAt      DateTime    @default(now())
+  member         Member?     @relation(fields: [memberId], references: [id])
+  transaction    Transaction @relation(fields: [transactionId], references: [id])
+  user           User?       @relation(fields: [userId], references: [id])
+  voucher        Voucher     @relation(fields: [voucherId], references: [id])
 }
 
 model Promotion {
-  id            String   @id @default(cuid())
-  name          String
-  description   String?
-  type          String   // PRODUCT_DISCOUNT, CATEGORY_DISCOUNT, BULK_DISCOUNT, BUY_X_GET_Y
-  discountValue Float    // percentage (0-100) or fixed amount
-  discountType  String   // PERCENTAGE, FIXED
-  minQuantity   Int?     // minimum quantity for bulk discount
-  buyQuantity   Int?     // buy X quantity for BUY_X_GET_Y
-  getQuantity   Int?     // get Y quantity for BUY_X_GET_Y
-  startDate     DateTime
-  endDate       DateTime
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
-  productPromotions ProductPromotion[]
+  id                 String              @id @default(cuid())
+  name               String
+  description        String?
+  type               String
+  discountValue      Float
+  minQuantity        Int?
+  buyQuantity        Int?
+  getQuantity        Int?
+  startDate          DateTime
+  endDate            DateTime
+  isActive           Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
   categoryPromotions CategoryPromotion[]
+  productPromotions  ProductPromotion[]
 }
 
 model ProductPromotion {
-  id          String @id @default(cuid())
+  id          String    @id @default(cuid())
   promotionId String
   productId   String
-  
-  promotion Promotion @relation(fields: [promotionId], references: [id])
-  product   Product   @relation(fields: [productId], references: [id])
-  
+  product     Product   @relation(fields: [productId], references: [id])
+  promotion   Promotion @relation(fields: [promotionId], references: [id])
+
   @@unique([promotionId, productId])
 }
 
 model CategoryPromotion {
-  id          String @id @default(cuid())
+  id          String    @id @default(cuid())
   promotionId String
   categoryId  String
-  
-  promotion Promotion @relation(fields: [promotionId], references: [id])
-  category  Category  @relation(fields: [categoryId], references: [id])
-  
+  category    Category  @relation(fields: [categoryId], references: [id])
+  promotion   Promotion @relation(fields: [promotionId], references: [id])
+
   @@unique([promotionId, categoryId])
+}
+
+model operational_expense {
+  id          String   @id @default(cuid())
+  name        String
+  amount      Float
+  category    String
+  date        DateTime
+  description String?
+  receipt     String?
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [createdBy], references: [id])
+
+  @@index([category])
+  @@index([createdBy])
+  @@index([date])
 }

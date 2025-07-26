@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
+import useSWR from 'swr'
 import {
   PlusIcon,
   PencilIcon,
@@ -39,22 +40,33 @@ export default function ProductsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [showInactive, setShowInactive] = useState(false)
 
-  // Fetch data from API
-  useEffect(() => {
-    fetchProducts()
-    fetchCategories()
-  }, [])
+  // Fetcher function for SWR
+  const fetcher = async (url: string) => {
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error('Failed to fetch data')
+    }
+    return response.json()
+  }
 
-  const fetchProducts = async () => {
-    try {
-      setLoading(true)
-      const response = await fetch('/api/products?includeInactive=true')
-      if (!response.ok) {
-        throw new Error('Failed to fetch products')
-      }
-      const data = await response.json()
-      // Transform API data to match our interface
-      const transformedProducts = data.map((product: any) => ({
+  // Fetch products with SWR for real-time updates
+  const { data: productsData, error: productsError, isLoading: productsLoading, mutate: refreshProducts } = useSWR(
+    '/api/products?includeInactive=true', 
+    fetcher, 
+    {
+      refreshInterval: 5000, // Refresh every 5 seconds
+      revalidateOnFocus: true,
+      dedupingInterval: 2000
+    }
+  )
+
+  // Fetch categories with SWR
+  const { data: categoriesData, error: categoriesError } = useSWR('/api/categories', fetcher)
+
+  // Transform products data
+  useEffect(() => {
+    if (productsData) {
+      const transformedProducts = productsData.map((product: any) => ({
         id: product.id.toString(),
         name: product.name,
         description: product.description || '',
@@ -67,164 +79,177 @@ export default function ProductsPage() {
         image: product.image
       }))
       setProducts(transformedProducts)
-    } catch (error) {
-      console.error('Error fetching products:', error)
-      // Fallback to sample data if API fails
-      setProducts([
-        {
-          id: '1',
-          name: 'Nasi Goreng Spesial',
-          description: 'Nasi goreng dengan telur, ayam, dan sayuran',
-          price: 25000,
-          stock: 20,
-          category: '1',
-          categoryName: 'Makanan Utama',
-          isActive: true,
-          createdAt: '2024-01-15',
-          image: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=400&h=300&fit=crop&crop=center',
-        },
-        {
-          id: '2',
-          name: 'Mie Ayam Bakso',
-          description: 'Mie ayam dengan bakso dan pangsit',
-          price: 20000,
-          stock: 15,
-          category: '1',
-          categoryName: 'Makanan Utama',
-          isActive: true,
-          createdAt: '2024-01-15',
-          image: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=400&h=300&fit=crop&crop=center',
-        },
-        {
-          id: '3',
-          name: 'Ayam Bakar',
-          description: 'Ayam bakar bumbu kecap dengan lalapan',
-          price: 30000,
-          stock: 10,
-          category: '1',
-          categoryName: 'Makanan Utama',
-          isActive: true,
-          createdAt: '2024-01-15',
-          image: 'https://images.unsplash.com/photo-1598103442097-8b74394b95c6?w=400&h=300&fit=crop&crop=center',
-        },
-        {
-          id: '4',
-          name: 'Es Teh Manis',
-          description: 'Teh manis dingin segar',
-          price: 5000,
-          stock: 50,
-          category: '2',
-          categoryName: 'Minuman',
-          isActive: true,
-          createdAt: '2024-01-15',
-          image: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=400&h=300&fit=crop&crop=center',
-        },
-        {
-          id: '5',
-          name: 'Jus Jeruk',
-          description: 'Jus jeruk segar tanpa gula tambahan',
-          price: 12000,
-          stock: 25,
-          category: '2',
-          categoryName: 'Minuman',
-          isActive: true,
-          createdAt: '2024-01-15',
-          image: 'https://images.unsplash.com/photo-1621506289937-a8e4df240d0b?w=400&h=300&fit=crop&crop=center',
-        },
-        {
-          id: '6',
-          name: 'Kopi Hitam',
-          description: 'Kopi hitam robusta pilihan',
-          price: 8000,
-          stock: 30,
-          category: '2',
-          categoryName: 'Minuman',
-          isActive: false,
-          createdAt: '2024-01-15',
-          image: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400&h=300&fit=crop&crop=center',
-        },
-        {
-          id: '7',
-          name: 'Es Krim Vanilla',
-          description: 'Es krim vanilla premium',
-          price: 15000,
-          stock: 12,
-          category: '3',
-          categoryName: 'Dessert',
-          isActive: true,
-          createdAt: '2024-01-15',
-          image: 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=400&h=300&fit=crop&crop=center',
-        },
-        {
-          id: '8',
-          name: 'Puding Coklat',
-          description: 'Puding coklat lembut dengan topping',
-          price: 10000,
-          stock: 8,
-          category: '3',
-          categoryName: 'Dessert',
-          isActive: true,
-          createdAt: '2024-01-15',
-          image: 'https://images.unsplash.com/photo-1551024506-0bccd828d307?w=400&h=300&fit=crop&crop=center',
-        },
-        {
-          id: '9',
-          name: 'Keripik Singkong',
-          description: 'Keripik singkong renyah original',
-          price: 8000,
-          stock: 20,
-          category: '4',
-          categoryName: 'Snack',
-          isActive: true,
-          createdAt: '2024-01-15',
-          image: 'https://images.unsplash.com/photo-1621939514649-280e2ee25f60?w=400&h=300&fit=crop&crop=center',
-        },
-        {
-          id: '10',
-          name: 'Pisang Goreng',
-          description: 'Pisang goreng crispy dengan gula halus',
-          price: 12000,
-          stock: 15,
-          category: '4',
-          categoryName: 'Snack',
-          isActive: true,
-          createdAt: '2024-01-15',
-        },
-      ])
-    } finally {
       setLoading(false)
     }
-  }
+  }, [productsData])
 
-  const fetchCategories = async () => {
-    try {
-      const response = await fetch('/api/categories')
-      if (!response.ok) {
-        throw new Error('Failed to fetch categories')
-      }
-      const data = await response.json()
-      // Transform API data to match our interface
-      const transformedCategories = data.map((category: any) => ({
+  // Set categories data
+  useEffect(() => {
+    if (categoriesData) {
+      const transformedCategories = categoriesData.map((category: any) => ({
         id: category.id.toString(),
         name: category.name
       }))
       setCategories(transformedCategories)
-    } catch (error) {
-      console.error('Error fetching categories:', error)
-      // Fallback to sample data if API fails
+    }
+  }, [categoriesData])
+
+  // Set loading state
+  useEffect(() => {
+    setLoading(productsLoading)
+  }, [productsLoading])
+
+  // Handle product errors with fallback data
+  useEffect(() => {
+    if (productsError) {
+      console.error('Error fetching products:', productsError)
+      toast.error('Gagal memuat data produk')
+      // Fallback to sample data if API fails - using fashion products
+      setProducts([
+        {
+          id: '1',
+          name: 'Kemeja Denim',
+          description: 'Kemeja denim lengan panjang dengan warna biru klasik',
+          price: 250000,
+          stock: 20,
+          category: '1',
+          categoryName: 'Atasan',
+          isActive: true,
+          createdAt: '2024-01-15',
+          image: 'https://images.unsplash.com/photo-1598033129183-c4f50c736f10?w=400&h=300&fit=crop&crop=center',
+        },
+        {
+          id: '2',
+          name: 'Kaos Polos',
+          description: 'Kaos polos premium dengan bahan katun combed 30s',
+          price: 120000,
+          stock: 15,
+          category: '1',
+          categoryName: 'Atasan',
+          isActive: true,
+          createdAt: '2024-01-15',
+          image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=400&h=300&fit=crop&crop=center',
+        },
+        {
+          id: '3',
+          name: 'Sweater Rajut',
+          description: 'Sweater rajut hangat dengan desain minimalis',
+          price: 300000,
+          stock: 10,
+          category: '1',
+          categoryName: 'Atasan',
+          isActive: true,
+          createdAt: '2024-01-15',
+          image: 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=400&h=300&fit=crop&crop=center',
+        },
+        {
+          id: '4',
+          name: 'Celana Jeans',
+          description: 'Celana jeans slim fit dengan warna biru tua',
+          price: 350000,
+          stock: 50,
+          category: '2',
+          categoryName: 'Bawahan',
+          isActive: true,
+          createdAt: '2024-01-15',
+          image: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=400&h=300&fit=crop&crop=center',
+        },
+        {
+          id: '5',
+          name: 'Rok Panjang',
+          description: 'Rok panjang dengan bahan linen premium',
+          price: 220000,
+          stock: 25,
+          category: '2',
+          categoryName: 'Bawahan',
+          isActive: true,
+          createdAt: '2024-01-15',
+          image: 'https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?w=400&h=300&fit=crop&crop=center',
+        },
+        {
+          id: '6',
+          name: 'Celana Pendek',
+          description: 'Celana pendek casual untuk aktivitas sehari-hari',
+          price: 180000,
+          stock: 30,
+          category: '2',
+          categoryName: 'Bawahan',
+          isActive: false,
+          createdAt: '2024-01-15',
+          image: 'https://images.unsplash.com/photo-1591195853828-11db59a44f6b?w=400&h=300&fit=crop&crop=center',
+        },
+        {
+          id: '7',
+          name: 'Topi Bucket',
+          description: 'Topi bucket dengan bahan katun yang nyaman',
+          price: 150000,
+          stock: 12,
+          category: '3',
+          categoryName: 'Aksesoris',
+          isActive: true,
+          createdAt: '2024-01-15',
+          image: 'https://images.unsplash.com/photo-1556306535-0f09a537f0a3?w=400&h=300&fit=crop&crop=center',
+        },
+        {
+          id: '8',
+          name: 'Dompet Kulit',
+          description: 'Dompet kulit asli dengan banyak slot kartu',
+          price: 280000,
+          stock: 8,
+          category: '3',
+          categoryName: 'Aksesoris',
+          isActive: true,
+          createdAt: '2024-01-15',
+          image: 'https://images.unsplash.com/photo-1627123424574-724758594e93?w=400&h=300&fit=crop&crop=center',
+        },
+        {
+          id: '9',
+          name: 'Sneakers Casual',
+          description: 'Sepatu sneakers casual dengan sol empuk',
+          price: 450000,
+          stock: 20,
+          category: '4',
+          categoryName: 'Sepatu',
+          isActive: true,
+          createdAt: '2024-01-15',
+          image: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=400&h=300&fit=crop&crop=center',
+        },
+        {
+          id: '10',
+          name: 'Boots Kulit',
+          description: 'Boots kulit premium dengan desain klasik',
+          price: 850000,
+          stock: 15,
+          category: '4',
+          categoryName: 'Sepatu',
+          isActive: true,
+          createdAt: '2024-01-15',
+          image: 'https://images.unsplash.com/photo-1608256246200-53e635b5b65f?w=400&h=300&fit=crop&crop=center',
+        },
+      ])
+      setLoading(false)
+    }
+  }, [productsError])
+
+  // Handle category errors with fallback data
+  useEffect(() => {
+    if (categoriesError) {
+      console.error('Error fetching categories:', categoriesError)
+      toast.error('Gagal memuat data kategori')
+      // Fallback to sample data if API fails - using fashion categories
       setCategories([
-        { id: '1', name: 'Makanan Utama' },
-        { id: '2', name: 'Minuman' },
-        { id: '3', name: 'Dessert' },
-        { id: '4', name: 'Snack' },
+        { id: '1', name: 'Atasan' },
+        { id: '2', name: 'Bawahan' },
+        { id: '3', name: 'Aksesoris' },
+        { id: '4', name: 'Sepatu' },
       ])
     }
-  }
+  }, [categoriesError])
 
   const filteredProducts = products.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesCategory = selectedCategory === 'all' || product.category === selectedCategory
-    const matchesStatus = showInactive || product.isActive
+    const matchesStatus = showInactive ? true : product.isActive
     return matchesSearch && matchesCategory && matchesStatus
   })
 
@@ -237,10 +262,25 @@ export default function ProductsPage() {
     toast.success('Status produk berhasil diubah')
   }
 
-  const deleteProduct = (id: string) => {
+  const deleteProduct = async (id: string) => {
     if (confirm('Apakah Anda yakin ingin menghapus produk ini?')) {
-      setProducts(products.filter(product => product.id !== id))
-      toast.success('Produk berhasil dihapus')
+      try {
+        const response = await fetch(`/api/products?id=${id}`, {
+          method: 'DELETE',
+        })
+        
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Gagal menghapus produk')
+        }
+        
+        // Refresh products data after successful deletion
+        refreshProducts()
+        toast.success('Produk berhasil dihapus')
+      } catch (error) {
+        console.error('Error deleting product:', error)
+        toast.error(error instanceof Error ? error.message : 'Gagal menghapus produk')
+      }
     }
   }
 
