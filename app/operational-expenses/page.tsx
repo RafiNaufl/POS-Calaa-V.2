@@ -1,10 +1,11 @@
-'use client'
+"use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import { id } from 'date-fns/locale'
+import Navbar from '@/components/Navbar'
 import { 
   Card, 
   CardContent, 
@@ -48,7 +49,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { BarChart3, CalendarIcon, DollarSign, Filter, PlusIcon, Pencil, Receipt, Trash2, TrendingUp } from 'lucide-react'
+import { DateRangePicker } from '@/components/ui/date-range-picker'
+import { BarChart3, CalendarIcon, DollarSign, Filter, PlusIcon, Pencil, Receipt, Trash2, TrendingUp, Search as SearchIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/use-toast'
 
@@ -79,6 +81,8 @@ export default function OperationalExpensesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isImageDialogOpen, setIsImageDialogOpen] = useState(false)
+  const [currentImage, setCurrentImage] = useState('')
   const [currentExpense, setCurrentExpense] = useState<OperationalExpense | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
@@ -121,7 +125,7 @@ export default function OperationalExpensesPage() {
   }, [session, router, toast])
   
   // Fetch expenses
-  const fetchExpenses = async () => {
+  const fetchExpenses = useCallback(async () => {
     setIsLoading(true)
     try {
       const startDateParam = filter.startDate ? format(filter.startDate, 'yyyy-MM-dd') : ''
@@ -149,7 +153,7 @@ export default function OperationalExpensesPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [filter, toast])
   
   // Initial fetch
   useEffect(() => {
@@ -158,7 +162,7 @@ export default function OperationalExpensesPage() {
       // Reset to first page when filter changes
       setCurrentPage(1)
     }
-  }, [session, filter])
+  }, [session, filter, fetchExpenses])
   
   // Handle form input change
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -178,10 +182,59 @@ export default function OperationalExpensesPage() {
     }
   }
   
+  // Handle receipt image upload
+  const handleReceiptUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      // Validate file size (2MB max)
+      if (file.size > 2 * 1024 * 1024) {
+        toast({
+          title: 'Error',
+          description: 'Ukuran file terlalu besar. Maksimal 2MB',
+          variant: 'destructive'
+        })
+        return
+      }
+
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        toast({
+          title: 'Error',
+          description: 'File harus berupa gambar',
+          variant: 'destructive'
+        })
+        return
+      }
+
+      // Create preview URL
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        const imageUrl = event.target?.result as string
+        setFormData(prev => ({ ...prev, receipt: imageUrl }))
+        toast({
+          title: 'Sukses',
+          description: 'Gambar bukti pembayaran berhasil dipilih'
+        })
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+  
   // Handle filter date change
   const handleFilterDateChange = (name: string, date: Date | undefined) => {
     if (date) {
       setFilter(prev => ({ ...prev, [name]: date }))
+    }
+  }
+  
+  // Handle date range change
+  const handleDateRangeChange = (range: { from: Date; to: Date } | undefined) => {
+    if (range?.from && range?.to) {
+      setFilter(prev => ({
+        ...prev,
+        startDate: range.from,
+        endDate: range.to
+      }))
     }
   }
   
@@ -201,6 +254,23 @@ export default function OperationalExpensesPage() {
       description: '',
       receipt: ''
     })
+    
+    // Reset file input
+    const fileInput = document.getElementById('receipt-upload') as HTMLInputElement
+    if (fileInput) {
+      fileInput.value = ''
+    }
+  }
+  
+  // Remove receipt image
+  const removeReceiptImage = () => {
+    setFormData(prev => ({ ...prev, receipt: '' }))
+    
+    // Reset file input
+    const fileInput = document.getElementById('receipt-upload') as HTMLInputElement
+    if (fileInput) {
+      fileInput.value = ''
+    }
   }
   
   // Open dialog for adding new expense
@@ -370,14 +440,19 @@ export default function OperationalExpensesPage() {
   const totalPages = Math.ceil(expenses.length / itemsPerPage)
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="min-h-screen bg-gray-50">
+      <Navbar />
+      <div className="container mx-auto py-6 space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
           <h1 className="text-3xl font-bold">Biaya Operasional</h1>
           <p className="text-muted-foreground mt-1">Kelola semua biaya operasional bisnis Anda</p>
         </div>
-        <Button onClick={() => openAddDialog()} className="bg-primary hover:bg-primary/90 text-white shadow-sm flex items-center gap-2">
-          <PlusIcon className="h-4 w-4" />
+        <Button 
+          onClick={() => openAddDialog()} 
+          className="bg-primary hover:bg-primary/90 text-black shadow-md rounded-lg px-5 py-2.5 flex items-center gap-2 transition-all duration-200 hover:scale-105 hover:shadow-lg"
+        >
+          <PlusIcon className="h-5 w-5" />
           Tambah Biaya Operasional
         </Button>
       </div>
@@ -393,64 +468,23 @@ export default function OperationalExpensesPage() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Start Date Filter */}
-            <div className="space-y-2">
-              <Label htmlFor="startDate">Tanggal Mulai</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start text-left font-normal bg-white hover:bg-gray-50 border-input"
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
-                    {filter.startDate ? (
-                      format(filter.startDate, 'PPP', { locale: id })
-                    ) : (
-                      <span>Pilih tanggal</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 bg-white border shadow-md rounded-md">
-                  <Calendar
-                    mode="single"
-                    selected={filter.startDate}
-                    onSelect={(date) => handleFilterDateChange('startDate', date)}
-                    initialFocus
-                    locale={id}
-                    className="rounded-md"
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-            
-            {/* End Date Filter */}
-            <div className="space-y-2">
-              <Label htmlFor="endDate">Tanggal Akhir</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start text-left font-normal bg-white hover:bg-gray-50 border-input"
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
-                    {filter.endDate ? (
-                      format(filter.endDate, 'PPP', { locale: id })
-                    ) : (
-                      <span>Pilih tanggal</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 bg-white border shadow-md rounded-md">
-                  <Calendar
-                    mode="single"
-                    selected={filter.endDate}
-                    onSelect={(date) => handleFilterDateChange('endDate', date)}
-                    initialFocus
-                    locale={id}
-                    className="rounded-md"
-                  />
-                </PopoverContent>
-              </Popover>
+            {/* Date Range Filter */}
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="dateRange">Rentang Tanggal</Label>
+              <DateRangePicker
+                dateRange={{
+                  from: filter.startDate,
+                  to: filter.endDate
+                }}
+                onDateRangeChange={(range) => {
+                  if (range?.from && range?.to) {
+                    handleDateRangeChange({
+                      from: range.from,
+                      to: range.to
+                    });
+                  }
+                }}
+              />
             </div>
             
             {/* Category Filter */}
@@ -555,6 +589,7 @@ export default function OperationalExpensesPage() {
                       <TableHead className="font-semibold">Nama</TableHead>
                       <TableHead className="font-semibold">Kategori</TableHead>
                       <TableHead className="font-semibold text-right">Jumlah</TableHead>
+                      <TableHead className="font-semibold">Bukti Pembayaran</TableHead>
                       <TableHead className="font-semibold">Dibuat Oleh</TableHead>
                       <TableHead className="font-semibold text-right">Aksi</TableHead>
                     </TableRow>
@@ -573,6 +608,29 @@ export default function OperationalExpensesPage() {
                           </span>
                         </TableCell>
                         <TableCell className="text-right font-medium">{formatCurrency(expense.amount)}</TableCell>
+                        <TableCell>
+                          {expense.receipt ? (
+                            <div 
+                              className="relative w-12 h-12 cursor-pointer hover:scale-105 transition-transform duration-200" 
+                              onClick={() => {
+                                setCurrentImage(expense.receipt || '');
+                                setIsImageDialogOpen(true);
+                              }}
+                            >
+                              <img 
+                                src={expense.receipt} 
+                                alt="Bukti Pembayaran" 
+                                className="w-full h-full object-cover rounded-md border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200"
+                                title="Klik untuk melihat gambar"
+                              />
+                              <div className="absolute -top-1 -right-1 bg-primary text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] shadow-sm">
+                                <SearchIcon className="h-2 w-2" />
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 text-sm">-</span>
+                          )}
+                        </TableCell>
                         <TableCell>{expense.user_name || 'Unknown'}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end space-x-2">
@@ -632,9 +690,9 @@ export default function OperationalExpensesPage() {
       
       {/* Add/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[425px] bg-white border shadow-md">
-          <DialogHeader className="border-b pb-4">
-            <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
+        <DialogContent className="sm:max-w-[500px] md:max-w-[600px] lg:max-w-[650px] bg-white border-0 rounded-xl shadow-xl overflow-hidden">
+          <DialogHeader className="bg-gray-50 border-b px-6 py-4">
+            <DialogTitle className="flex items-center gap-2 text-lg font-semibold text-gray-800">
               {currentExpense ? (
                 <>
                   <Pencil className="h-5 w-5 text-primary" />
@@ -647,108 +705,112 @@ export default function OperationalExpensesPage() {
                 </>
               )}
             </DialogTitle>
-            <DialogDescription className="text-gray-600">
+            <DialogDescription className="text-gray-600 mt-1 text-sm">
               {currentExpense
                 ? "Ubah detail biaya operasional di bawah ini."
                 : "Tambahkan biaya operasional baru ke dalam sistem."}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
-            <div className="grid gap-5 py-4">
-              {/* Name */}
-              <div className="space-y-2">
-                <Label htmlFor="name" className="font-medium">Nama Biaya</Label>
-                <Input
-                  id="name"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  placeholder="Contoh: Gaji Karyawan, Sewa Tempat"
-                  className="border-input focus-visible:ring-primary bg-white"
-                  required
-                />
-              </div>
-              
-              {/* Amount */}
-              <div className="space-y-2">
-                <Label htmlFor="amount" className="font-medium">Jumlah (Rp)</Label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
-                    Rp
-                  </span>
+            <div className="grid gap-5 px-6 py-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Name */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="name" className="font-medium text-gray-700 text-sm">Nama Biaya</Label>
                   <Input
-                    id="amount"
-                    name="amount"
-                    type="number"
-                    value={formData.amount}
+                    id="name"
+                    name="name"
+                    value={formData.name}
                     onChange={handleInputChange}
-                    placeholder="0"
-                    className="pl-10 border-input focus-visible:ring-primary bg-white"
+                    placeholder="Contoh: Gaji Karyawan, Sewa Tempat"
+                    className="border-input focus-visible:ring-primary bg-white h-10"
                     required
                   />
                 </div>
-              </div>
-              
-              {/* Category */}
-              <div className="space-y-2">
-                <Label htmlFor="category" className="font-medium">Kategori</Label>
-                <Select
-                  value={formData.category}
-                  onValueChange={(value) => handleSelectChange('category', value)}
-                >
-                  <SelectTrigger className="border-input focus:ring-primary bg-white hover:bg-gray-50">
-                    <SelectValue placeholder="Pilih kategori" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border shadow-md">
-                    <SelectItem value="FIXED" className="hover:bg-gray-50">
-                      <div className="flex items-center">
-                        <span className="h-2 w-2 rounded-full bg-blue-600 mr-2"></span>
-                        Tetap (Fixed)
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="VARIABLE" className="hover:bg-gray-50">
-                      <div className="flex items-center">
-                        <span className="h-2 w-2 rounded-full bg-amber-600 mr-2"></span>
-                        Variabel (Variable)
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              {/* Date */}
-              <div className="space-y-2">
-                <Label htmlFor="date" className="font-medium">Tanggal</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start text-left font-normal border-input bg-white hover:bg-gray-50 focus:ring-primary"
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4 text-gray-500" />
-                      {formData.date ? (
-                        format(formData.date, 'PPP', { locale: id })
-                      ) : (
-                        <span className="text-gray-500">Pilih tanggal</span>
-                      )}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0 bg-white border shadow-md rounded-md">
-                    <Calendar
-                      mode="single"
-                      selected={formData.date}
-                      onSelect={(date) => handleDateChange(date)}
-                      initialFocus
-                      locale={id}
-                      className="rounded-md"
+                
+                {/* Amount */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="amount" className="font-medium text-gray-700 text-sm">Jumlah (Rp)</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
+                      Rp
+                    </span>
+                    <Input
+                      id="amount"
+                      name="amount"
+                      type="number"
+                      value={formData.amount}
+                      onChange={handleInputChange}
+                      placeholder="0"
+                      className="pl-10 border-input focus-visible:ring-primary bg-white h-10"
+                      required
                     />
-                  </PopoverContent>
-                </Popover>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Category */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="category" className="font-medium text-gray-700 text-sm">Kategori</Label>
+                  <Select
+                    value={formData.category}
+                    onValueChange={(value) => handleSelectChange('category', value)}
+                  >
+                    <SelectTrigger className="border-input focus:ring-primary bg-white hover:bg-gray-50 h-10">
+                      <SelectValue placeholder="Pilih kategori" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border shadow-md">
+                      <SelectItem value="FIXED" className="hover:bg-gray-50">
+                        <div className="flex items-center">
+                          <span className="h-2 w-2 rounded-full bg-blue-600 mr-2"></span>
+                          Tetap (Fixed)
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="VARIABLE" className="hover:bg-gray-50">
+                        <div className="flex items-center">
+                          <span className="h-2 w-2 rounded-full bg-amber-600 mr-2"></span>
+                          Variabel (Variable)
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                {/* Date */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="date" className="font-medium text-gray-700 text-sm">Tanggal</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        id="date"
+                        variant="outline"
+                        className="w-full justify-start text-left font-normal border-input bg-white hover:bg-gray-50 focus:ring-2 focus:ring-primary h-10"
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
+                        {formData.date ? (
+                          format(formData.date, 'PPP', { locale: id })
+                        ) : (
+                          <span className="text-gray-500">Pilih tanggal</span>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={formData.date}
+                        onSelect={(date) => handleDateChange(date)}
+                        initialFocus
+                        locale={id}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
               </div>
               
               {/* Description */}
-              <div className="space-y-2">
-                <Label htmlFor="description" className="font-medium">
+              <div className="space-y-1.5">
+                <Label htmlFor="description" className="font-medium text-gray-700 text-sm">
                   Deskripsi
                   <span className="text-xs block font-normal text-gray-500">(Opsional)</span>
                 </Label>
@@ -763,40 +825,69 @@ export default function OperationalExpensesPage() {
                 />
               </div>
               
-              {/* Receipt URL */}
-              <div className="space-y-2">
-                <Label htmlFor="receipt" className="font-medium">
-                  URL Bukti Pembayaran
+              {/* Receipt Image Upload */}
+              <div className="space-y-1.5">
+                <Label htmlFor="receipt" className="font-medium text-gray-700 text-sm">
+                  Bukti Pembayaran
                   <span className="text-xs block font-normal text-gray-500">(Opsional)</span>
                 </Label>
-                <div className="relative">
-                  <Receipt className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
-                  <Input
-                    id="receipt"
-                    name="receipt"
-                    value={formData.receipt}
-                    onChange={handleInputChange}
-                    placeholder="https://example.com/receipt.jpg"
-                    className="pl-10 border-input focus-visible:ring-primary bg-white"
-                  />
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                  <div className="relative w-28 h-28 bg-gray-100 rounded-lg flex items-center justify-center border border-gray-200 overflow-hidden">
+                    {formData.receipt ? (
+                      <>
+                        <img 
+                          src={formData.receipt} 
+                          alt="Bukti Pembayaran" 
+                          className="w-full h-full object-cover rounded-lg"
+                        />
+                        <button
+                          type="button"
+                          onClick={removeReceiptImage}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 shadow-sm"
+                        >
+                          ×
+                        </button>
+                      </>
+                    ) : (
+                      <Receipt className="h-10 w-10 text-gray-400" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      id="receipt-upload"
+                      onChange={handleReceiptUpload}
+                    />
+                    <label
+                      htmlFor="receipt-upload"
+                      className="inline-flex cursor-pointer bg-white border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
+                    >
+                      {formData.receipt ? 'Ganti Gambar' : 'Pilih Gambar'}
+                    </label>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Format yang didukung: PNG, JPG (Maks. 2MB)
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
             
-            <DialogFooter className="mt-6 pt-4 border-t">
+            <DialogFooter className="bg-gray-50 px-6 py-4 border-t flex justify-end gap-2">
               <Button 
                 type="button" 
                 variant="outline" 
                 onClick={() => setIsDialogOpen(false)} 
                 disabled={isSubmitting}
-                className="bg-white hover:bg-gray-50 border-gray-300"
+                className="bg-white hover:bg-gray-50 border-gray-300 h-10"
               >
                 Batal
               </Button>
               <Button 
                 type="submit" 
                 disabled={isSubmitting}
-                className="bg-primary hover:bg-primary/90"
+                className="bg-primary hover:bg-primary/90 h-10"
               >
                 {isSubmitting ? (
                   <>
@@ -812,22 +903,31 @@ export default function OperationalExpensesPage() {
       
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-xl flex items-center">
+        <AlertDialogContent className="border-0 shadow-xl">
+          <AlertDialogHeader className="pb-2">
+            <AlertDialogTitle className="text-xl flex items-center text-gray-800">
               <Trash2 className="h-5 w-5 mr-2 text-destructive" />
               Konfirmasi Hapus
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              Apakah Anda yakin ingin menghapus biaya operasional <span className="font-medium">{currentExpense?.name}</span>? Tindakan ini tidak dapat dibatalkan.
+            <AlertDialogDescription className="text-gray-600 mt-2">
+              Apakah Anda yakin ingin menghapus biaya operasional <span className="font-medium text-gray-800">{currentExpense?.name}</span>? Tindakan ini tidak dapat dibatalkan.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="border-input" disabled={isSubmitting}>Batal</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} disabled={isSubmitting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+          <AlertDialogFooter className="mt-4">
+            <AlertDialogCancel 
+              className="bg-white hover:bg-gray-50 border-gray-300 h-10 font-medium" 
+              disabled={isSubmitting}
+            >
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDelete} 
+              disabled={isSubmitting} 
+              className="bg-white hover:bg-gray-50 border-gray-300 h-10 font-medium"
+            >
               {isSubmitting ? (
                 <>
-                  <div className="animate-spin mr-2 h-4 w-4 border-t-2 border-b-2 border-white rounded-full"></div>
+                  <div className="animate-spin mr-2 h-4 w-4 border-t-2 border-b-2 border-gray-300 rounded-full"></div>
                   Menghapus...
                 </>
               ) : 'Hapus'}
@@ -835,6 +935,30 @@ export default function OperationalExpensesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      
+      {/* Image Preview Dialog */}
+       <Dialog open={isImageDialogOpen} onOpenChange={setIsImageDialogOpen}>
+         <DialogContent className="sm:max-w-[700px] p-0 overflow-hidden bg-black/90 border-0">
+           <div className="relative w-full h-full max-h-[80vh] flex items-center justify-center p-4">
+             <img 
+               src={currentImage} 
+               alt="Bukti Pembayaran" 
+               className="max-w-full max-h-[70vh] object-contain rounded-md shadow-lg"
+             />
+             <Button 
+               className="absolute top-2 right-2 h-8 w-8 rounded-full p-0 bg-black/50 hover:bg-black/70 text-white"
+               variant="ghost"
+               onClick={() => setIsImageDialogOpen(false)}
+             >
+               ×
+             </Button>
+           </div>
+           <div className="bg-black/80 p-2 text-center text-white text-sm">
+             Bukti Pembayaran
+           </div>
+         </DialogContent>
+       </Dialog>
+      </div>
     </div>
   )
 }

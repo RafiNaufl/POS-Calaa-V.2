@@ -1,17 +1,18 @@
-'use client'
+"use client"
 
-import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Button } from '@/components/ui/button'
-import { Download, RefreshCw } from 'lucide-react'
-import { ArrowLeftIcon } from '@heroicons/react/24/outline'
-import { useToast } from '@/components/ui/use-toast'
-import { formatCurrency } from '@/lib/utils'
-import { format } from 'date-fns'
-import { id } from 'date-fns/locale'
-import Link from 'next/link'
+import { useState, useEffect, useCallback } from "react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Button } from "@/components/ui/button"
+import { Download, RefreshCw } from "lucide-react"
+import { ArrowLeftIcon } from "@heroicons/react/24/outline"
+import { useToast } from "@/components/ui/use-toast"
+import { formatCurrency } from "@/lib/utils"
+import { format } from "date-fns"
+import { id } from "date-fns/locale"
+import Link from "next/link"
+import Navbar from "@/components/Navbar"
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -23,8 +24,8 @@ import {
   ArcElement,
   PointElement,
   LineElement,
-} from 'chart.js'
-import { Bar, Pie, Line } from 'react-chartjs-2'
+} from "chart.js"
+import { Bar, Pie, Line } from "react-chartjs-2"
 
 // Register ChartJS components
 ChartJS.register(
@@ -45,7 +46,7 @@ export default function FinancialReportPage() {
   const [financialData, setFinancialData] = useState<any>(null)
   const [selectedRange, setSelectedRange] = useState('30days')
 
-  const fetchFinancialData = async () => {
+  const fetchFinancialData = useCallback(async () => {
     setLoading(true)
     try {
       const response = await fetch(`/api/reports/financial?range=${selectedRange}`)
@@ -64,11 +65,11 @@ export default function FinancialReportPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [selectedRange, toast])
 
   useEffect(() => {
     fetchFinancialData()
-  }, [selectedRange])
+  }, [selectedRange, fetchFinancialData])
 
   const handleRangeChange = (value: string) => {
     setSelectedRange(value)
@@ -213,7 +214,9 @@ export default function FinancialReportPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div>
+      <Navbar />
+      <div className="container mx-auto py-6 space-y-6">
       {/* Header */}
       <header className="bg-white shadow-sm border-b -mx-6 -mt-6 mb-6">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -532,6 +535,7 @@ export default function FinancialReportPage() {
           </TabsContent>
         ))}
       </Tabs>
+      </div>
     </div>
   )
 }

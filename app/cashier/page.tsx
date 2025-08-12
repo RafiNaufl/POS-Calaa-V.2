@@ -1,4 +1,4 @@
-'use client'
+"use client"
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import Navbar from '@/components/Navbar'
-import XenditPaymentModal from '@/components/XenditPaymentModal'
+import DOKUPaymentModal from '@/components/DOKUPaymentModal'
 import useSWR from 'swr'
 import {
   ShoppingCartIcon,
@@ -19,8 +19,30 @@ import {
   BanknotesIcon,
   XCircleIcon,
   DevicePhoneMobileIcon,
+  ChevronUpIcon,
+  ChevronDownIcon,
+  InformationCircleIcon,
+  CheckCircleIcon,
 } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
+
+// AutomaticIcon component for promotions
+const AutomaticIcon = ({ className }: { className?: string }) => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg" 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    className={className}
+  >
+    <path d="M5 12h14" />
+    <path d="M12 5v14" />
+    <path d="M5 5l14 14" />
+  </svg>
+);
 
 // Add custom CSS animations
 if (typeof document !== 'undefined') {
@@ -57,6 +79,7 @@ if (typeof document !== 'undefined') {
 interface Product {
   id: string
   name: string
+  productCode?: string
   price: number
   category: {
     id: string
@@ -64,6 +87,8 @@ interface Product {
   }
   stock: number
   image?: string
+  size?: string
+  color?: string
 }
 
 interface CartItem extends Product {
@@ -140,13 +165,13 @@ export default function CashierPage() {
   const [member, setMember] = useState<Member | null>(null)
   const [pointsToUse, setPointsToUse] = useState(0)
   const [isSearchingMember, setIsSearchingMember] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'DIGITAL_WALLET' | 'E_WALLET'>('CASH')
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'DIGITAL_WALLET' | 'E_WALLET' | 'DOKU'>('CASH')
   const [loading, setLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState('')
   const [showTransactionModal, setShowTransactionModal] = useState(false)
   const [completedTransaction, setCompletedTransaction] = useState<any>(null)
-  const [showXenditModal, setShowXenditModal] = useState(false)
+  const [showDOKUModal, setShowDOKUModal] = useState(false)
   const [pendingTransaction, setPendingTransaction] = useState<any>(null)
   const [voucherCode, setVoucherCode] = useState('')
   const [appliedVoucher, setAppliedVoucher] = useState<Voucher | null>(null)
@@ -208,14 +233,14 @@ export default function CashierPage() {
         window.history.replaceState({}, document.title, window.location.pathname)
         
         // Handle successful payment
-        handleXenditPaymentSuccess({ id: transactionId })
+        handleDOKUPaymentSuccess({ id: transactionId })
       })
       .catch(error => {
         console.error('Error updating transaction status:', error)
         toast.error('Terjadi kesalahan saat memperbarui status transaksi')
         // Still try to handle the payment success even if update fails
         window.history.replaceState({}, document.title, window.location.pathname)
-        handleXenditPaymentSuccess({ id: transactionId })
+        handleDOKUPaymentSuccess({ id: transactionId })
       })
     } else if (paymentStatus === 'failed' || paymentStatus === 'cancelled') {
       // Handle failed or cancelled payment
@@ -227,22 +252,29 @@ export default function CashierPage() {
 
   // Process products data from SWR
   useEffect(() => {
-    if (productsData) {
-      setProducts(productsData)
+    if (productsData && productsData.products && Array.isArray(productsData.products)) {
+      setProducts(productsData.products)
+      setLoading(false)
+    } else if (productsData && !productsData.products) {
+      console.error('Products data does not contain products array:', productsData)
+      setError('Format data produk tidak valid')
       setLoading(false)
     }
   }, [productsData])
 
   // Process categories data from SWR
   useEffect(() => {
-    if (categoriesData) {
+    if (categoriesData && Array.isArray(categoriesData)) {
       setCategories(categoriesData)
+    } else if (categoriesData) {
+      console.error('Categories data is not an array:', categoriesData)
+      toast.error('Format data kategori tidak valid')
     }
   }, [categoriesData])
 
   // Process vouchers data from SWR
   useEffect(() => {
-    if (vouchersData) {
+    if (vouchersData && Array.isArray(vouchersData)) {
       const activeVouchers = vouchersData.filter((voucher: Voucher) => {
         const now = new Date()
         const startDate = new Date(voucher.startDate)
@@ -250,12 +282,14 @@ export default function CashierPage() {
         return voucher.isActive && now >= startDate && now <= endDate
       })
       setAvailableVouchers(activeVouchers)
+    } else if (vouchersData && !Array.isArray(vouchersData)) {
+      console.error('Vouchers data is not an array:', vouchersData)
     }
   }, [vouchersData])
 
   // Process promotions data from SWR
   useEffect(() => {
-    if (promotionsData) {
+    if (promotionsData && Array.isArray(promotionsData)) {
       const activePromotions = promotionsData.filter((promotion: any) => {
         const now = new Date()
         const startDate = new Date(promotion.startDate)
@@ -263,6 +297,8 @@ export default function CashierPage() {
         return promotion.isActive && now >= startDate && now <= endDate
       })
       setAvailablePromotions(activePromotions)
+    } else if (promotionsData && !Array.isArray(promotionsData)) {
+      console.error('Promotions data is not an array:', promotionsData)
     }
   }, [promotionsData])
   
@@ -295,11 +331,13 @@ export default function CashierPage() {
   }, [promotionsError])
 
   // Filter products
-  const filteredProducts = products.filter(product => {
+  const filteredProducts = Array.isArray(products) ? products.filter(product => {
     const matchesCategory = selectedCategory === 'all' || product.category.id === selectedCategory
-    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesSearch = 
+      product.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      (product.productCode && product.productCode.toLowerCase().includes(searchTerm.toLowerCase()))
     return matchesCategory && matchesSearch
-  })
+  }) : []
 
   // Cart functions
   const addToCart = (product: Product) => {
@@ -440,6 +478,16 @@ export default function CashierPage() {
     setIsValidatingVoucher(true)
     try {
       const { subtotal } = calculateTotal()
+      
+      // Prepare cart items for voucher validation
+      const cartItems = cart.map(item => ({
+        productId: item.id,
+        categoryId: item.category.id,
+        quantity: item.quantity,
+        price: item.price,
+        name: item.name
+      }))
+      
       const response = await fetch('/api/vouchers/validate', {
         method: 'POST',
         headers: {
@@ -448,6 +496,7 @@ export default function CashierPage() {
         body: JSON.stringify({
           code: voucherCode,
           subtotal,
+          cartItems,
           userId: session?.user?.id
         })
       })
@@ -459,7 +508,11 @@ export default function CashierPage() {
         toast.success(`Voucher berhasil diterapkan: ${data.voucher.name}`)
       } else {
         const error = await response.json()
-        toast.error(error.error || 'Voucher tidak valid')
+        if (error.minPurchase) {
+          toast.error(`Minimum pembelian Rp ${formatCurrency(error.minPurchase)}`)
+        } else {
+          toast.error(error.error || 'Voucher tidak valid')
+        }
       }
     } catch (error) {
       console.error('Error validating voucher:', error)
@@ -476,6 +529,12 @@ export default function CashierPage() {
     toast.success('Voucher dihapus')
   }
 
+  const removePromotions = () => {
+    setAppliedPromotions([])
+    setPromotionDiscount(0)
+    toast.success('Diskon promosi dibatalkan')
+  }
+
   const calculatePromotions = useCallback(async () => {
     if (cart.length === 0) return
 
@@ -484,7 +543,9 @@ export default function CashierPage() {
         productId: item.id,
         categoryId: item.category.id,
         quantity: item.quantity,
-        price: item.price
+        price: item.price,
+        name: item.name,
+        image: item.image
       }))
 
       const response = await fetch('/api/promotions/calculate', {
@@ -499,6 +560,11 @@ export default function CashierPage() {
         const data = await response.json()
         setAppliedPromotions(data.appliedPromotions || [])
         setPromotionDiscount(data.totalDiscount || 0)
+        
+        // Log applied promotions for debugging
+        if (data.appliedPromotions && data.appliedPromotions.length > 0) {
+          console.log('Applied promotions:', data.appliedPromotions)
+        }
       }
     } catch (error) {
       console.error('Error calculating promotions:', error)
@@ -561,10 +627,12 @@ export default function CashierPage() {
         promotionDiscount: totals.promotionDiscount // Mengirim kedua field untuk kompatibilitas
       }
       
-      // For E-Wallet payments, open Xendit modal
-      if (paymentMethod === 'E_WALLET') {
+      // E-Wallet payments are now handled by DOKU
+      
+      // For DOKU payments, open DOKU modal
+      if (paymentMethod === 'DOKU') {
         setPendingTransaction(transactionData)
-        setShowXenditModal(true)
+        setShowDOKUModal(true)
         setIsProcessing(false)
         return
       }
@@ -628,9 +696,11 @@ export default function CashierPage() {
     }
   }
 
-  const handleXenditPaymentSuccess = async (transaction: any) => {
-    console.log('Handling Xendit payment success for transaction ID:', transaction.id)
-    setShowXenditModal(false)
+  // Xendit payment handlers have been removed as we now use DOKU for all payment types
+
+  const handleDOKUPaymentSuccess = async (transaction: any) => {
+    console.log('Handling DOKU payment success for transaction ID:', transaction.id)
+    setShowDOKUModal(false)
     setPendingTransaction(null)
     setIsProcessing(true)
     
@@ -666,7 +736,7 @@ export default function CashierPage() {
           ...completeTransaction,
           items: transactionItems,
           appliedPromotions: appliedPromotions,
-          paymentMethod: completeTransaction.paymentMethod || 'E_WALLET',
+          paymentMethod: completeTransaction.paymentMethod || 'DOKU',
           customerName: completeTransaction.customerName || customerName,
           createdAt: completeTransaction.createdAt || new Date(),
           total: completeTransaction.total || 0
@@ -681,7 +751,7 @@ export default function CashierPage() {
           id: transaction.id,
           items: cart,
           total: transaction.total || calculateTotal().total,
-          paymentMethod: 'E_WALLET',
+          paymentMethod: 'DOKU',
           customerName: customerName || undefined,
           createdAt: new Date(),
           pointsUsed: pointsToUse,
@@ -702,7 +772,7 @@ export default function CashierPage() {
         id: transaction.id,
         items: cart,
         total: transaction.total || calculateTotal().total,
-        paymentMethod: 'E_WALLET',
+        paymentMethod: 'DOKU',
         customerName: customerName || undefined,
         createdAt: new Date(),
         pointsUsed: pointsToUse,
@@ -723,12 +793,12 @@ export default function CashierPage() {
     clearCart()
     // SWR will automatically revalidate data
     
-    toast.success('Pembayaran E-Wallet berhasil!')
+    toast.success('Pembayaran DOKU berhasil!')
   }
 
-  const handleXenditPaymentError = (error: string) => {
-    console.error('Xendit payment error:', error)
-    setShowXenditModal(false)
+  const handleDOKUPaymentError = (error: string) => {
+    console.error('DOKU payment error:', error)
+    setShowDOKUModal(false)
     setPendingTransaction(null)
     setIsProcessing(false)
     
@@ -740,7 +810,7 @@ export default function CashierPage() {
         window.location.href = '/login'
       }, 3000)
     } else {
-      toast.error('Pembayaran E-Wallet gagal: ' + error)
+      toast.error('Pembayaran DOKU gagal: ' + error)
     }
   }
 
@@ -760,7 +830,10 @@ export default function CashierPage() {
       
       ===== DETAIL PESANAN =====
       ${cart.map(item => 
-        `${item.name}\n${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price * item.quantity)}`
+        `${item.name}${item.productCode ? ` (Kode: ${item.productCode})` : ''}${item.size ? `
+Ukuran: ${item.size}` : ''}${item.color ? `
+Warna: ${item.color}` : ''}
+${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price * item.quantity)}`
       ).join('\n\n')}
       
       ===== TOTAL =====
@@ -900,70 +973,178 @@ export default function CashierPage() {
               <div className="flex flex-wrap gap-3 mb-4">
                 <button
                   onClick={() => setShowVoucherList(!showVoucherList)}
-                  className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     showVoucherList 
                       ? 'bg-purple-600 text-white' 
                       : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
                   }`}
                 >
-                  Voucher ({availableVouchers.length})
+                  <span>🎫</span>
+                  <span>Voucher ({availableVouchers.length})</span>
+                  {showVoucherList ? (
+                    <ChevronUpIcon className="h-4 w-4 ml-1" />
+                  ) : (
+                    <ChevronDownIcon className="h-4 w-4 ml-1" />
+                  )}
                 </button>
                 <button
                   onClick={() => setShowPromotionList(!showPromotionList)}
-                  className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     showPromotionList 
                       ? 'bg-green-600 text-white' 
                       : 'bg-green-50 text-green-700 hover:bg-green-100'
                   }`}
                 >
-                  Promosi ({availablePromotions.length})
+                  <span>🏷️</span>
+                  <span>Promosi ({availablePromotions.length})</span>
+                  {showPromotionList ? (
+                    <ChevronUpIcon className="h-4 w-4 ml-1" />
+                  ) : (
+                    <ChevronDownIcon className="h-4 w-4 ml-1" />
+                  )}
                 </button>
               </div>
 
               {/* Voucher List */}
               {showVoucherList && (
                 <div className="pt-4 border-t border-gray-100">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Voucher Tersedia</h3>
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="text-lg font-semibold text-gray-900">Voucher Tersedia</h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-medium">
+                        {availableVouchers.length} voucher
+                      </span>
+                      {appliedVoucher && (
+                        <span className="text-sm bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
+                          1 aktif
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {appliedVoucher && (
+                    <div className="mb-4 p-4 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg shadow-sm">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="flex items-center justify-center w-6 h-6 bg-green-100 text-green-700 rounded-full">✓</span>
+                            <h4 className="font-medium text-green-800 text-base">Voucher Aktif</h4>
+                          </div>
+                          <div className="ml-8 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-semibold text-gray-700">{appliedVoucher.name}</span>
+                              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">
+                                {appliedVoucher.code}
+                              </span>
+                            </div>
+                            <p className="text-sm text-green-700">
+                              <span className="font-medium">Tipe:</span> {
+                                appliedVoucher.type === 'PERCENTAGE' ? 'Persentase' : 
+                                appliedVoucher.type === 'FIXED_AMOUNT' ? 'Nominal Tetap' : 
+                                'Gratis Ongkir'
+                              }
+                            </p>
+                            <p className="text-sm text-green-700">
+                              <span className="font-medium">Nilai:</span> {
+                                appliedVoucher.type === 'PERCENTAGE' ? `${appliedVoucher.value}%` : 
+                                appliedVoucher.type === 'FIXED_AMOUNT' ? formatCurrency(appliedVoucher.value) : 
+                                'Gratis Ongkir'
+                              }
+                            </p>
+                            <p className="text-sm text-green-700 font-medium">
+                              Total diskon: {formatCurrency(voucherDiscount)}
+                            </p>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={removeVoucher}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-white text-red-500 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors shadow-sm"
+                          title="Hapus voucher"
+                        >
+                          <XCircleIcon className="h-4 w-4" />
+                          <span className="text-xs font-medium">Hapus</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  
                   {availableVouchers.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      Tidak ada voucher tersedia
+                    <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                      <div className="text-4xl mb-2">🎫</div>
+                      <p className="font-medium text-gray-600">Tidak ada voucher tersedia</p>
+                      <p className="text-sm text-gray-500 mt-1">Voucher akan muncul di sini saat tersedia</p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {availableVouchers.map((voucher) => (
-                        <div key={voucher.id} className="border border-gray-200 rounded-lg p-4">
-                          <div className="flex justify-between items-start mb-2">
-                            <h4 className="font-medium text-gray-900">{voucher.name}</h4>
-                            <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">
-                              {voucher.code}
-                            </span>
-                          </div>
-                          <p className="text-sm text-purple-600 font-medium mb-2">
-                            {voucher.type === 'PERCENTAGE' ? `${voucher.value}% OFF` : `Diskon ${formatCurrency(voucher.value)}`}
-                          </p>
-                          {voucher.minPurchase && (
-                            <p className="text-xs text-gray-500 mb-3">
-                              Min. pembelian: {formatCurrency(voucher.minPurchase)}
-                            </p>
-                          )}
-                          <button
-                            onClick={() => {
-                              setVoucherCode(voucher.code)
-                              validateVoucher()
-                            }}
-                            disabled={appliedVoucher !== null}
-                            className={`w-full py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                              appliedVoucher?.code === voucher.code
-                                ? 'bg-green-100 text-green-700'
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {availableVouchers.map((voucher) => (
+                          <div 
+                            key={voucher.id} 
+                            className={`border rounded-lg p-4 transition-all ${appliedVoucher?.code === voucher.code 
+                              ? 'border-green-300 bg-green-50 shadow-md' 
+                              : 'border-gray-200 hover:border-purple-300 hover:shadow-sm bg-white'}`}
+                          >
+                            <div className="flex justify-between items-start mb-2">
+                              <h4 className="font-medium text-gray-900">{voucher.name}</h4>
+                              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded font-medium">
+                                {voucher.code}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full ${voucher.type === 'PERCENTAGE' 
+                                ? 'bg-blue-100 text-blue-700' 
+                                : voucher.type === 'FIXED_AMOUNT' 
+                                ? 'bg-green-100 text-green-700' 
+                                : 'bg-purple-100 text-purple-700'}`}>
+                                {voucher.type === 'PERCENTAGE' ? '%' : voucher.type === 'FIXED_AMOUNT' ? '¥' : '🚚'}
+                              </span>
+                              <p className="text-sm font-medium ${voucher.type === 'PERCENTAGE' 
+                                ? 'text-blue-600' 
+                                : voucher.type === 'FIXED_AMOUNT' 
+                                ? 'text-green-600' 
+                                : 'text-purple-600'}">
+                                {voucher.type === 'PERCENTAGE' 
+                                  ? `Diskon ${voucher.value}%${(voucher as any).maxDiscount ? ` (maks. ${formatCurrency((voucher as any).maxDiscount)})` : ''}` 
+                                  : voucher.type === 'FIXED_AMOUNT' 
+                                  ? `Diskon ${formatCurrency(voucher.value)}` 
+                                  : 'Gratis Ongkir'}
+                              </p>
+                            </div>
+                            {voucher.minPurchase && (
+                              <div className="flex items-center gap-1 mb-2">
+                                <InformationCircleIcon className="h-4 w-4 text-gray-400" />
+                                <p className="text-xs text-gray-500">
+                                  Min. pembelian: {formatCurrency(voucher.minPurchase)}
+                                </p>
+                              </div>
+                            )}
+                            <button
+                              onClick={() => {
+                                setVoucherCode(voucher.code)
+                                validateVoucher()
+                              }}
+                              disabled={appliedVoucher !== null}
+                              className={`w-full py-2 px-3 rounded-lg text-sm font-medium transition-colors mt-2 flex items-center justify-center gap-2 ${appliedVoucher?.code === voucher.code
+                                ? 'bg-green-100 text-green-700 border border-green-300'
                                 : appliedVoucher !== null
                                 ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                : 'bg-purple-600 text-white hover:bg-purple-700'
-                            }`}
-                          >
-                            {appliedVoucher?.code === voucher.code ? 'Diterapkan' : 'Gunakan'}
-                          </button>
-                        </div>
-                      ))}
+                                : 'bg-purple-600 text-white hover:bg-purple-700 shadow-sm hover:shadow transform hover:scale-105'}`}
+                            >
+                              {appliedVoucher?.code === voucher.code ? (
+                                <>
+                                  <CheckCircleIcon className="h-4 w-4" />
+                                  <span>Diterapkan</span>
+                                </>
+                              ) : (
+                                <>
+                                  {!appliedVoucher && <span>🎫</span>}
+                                  <span>{appliedVoucher ? 'Tidak tersedia' : 'Gunakan'}</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -972,27 +1153,121 @@ export default function CashierPage() {
               {/* Promotion List */}
               {showPromotionList && (
                 <div className="pt-4 border-t border-gray-100">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Promosi Tersedia</h3>
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="text-lg font-semibold text-gray-900">Promosi Tersedia</h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
+                        {availablePromotions.length} promosi
+                      </span>
+                      {appliedPromotions.length > 0 && (
+                        <span className="text-sm bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
+                          {appliedPromotions.length} aktif
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {appliedPromotions.length > 0 && (
+                    <div className="mb-4 p-4 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg shadow-sm">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="flex items-center justify-center w-6 h-6 bg-green-100 text-green-700 rounded-full">✓</span>
+                          <h4 className="font-medium text-green-800 text-base">Promosi Aktif</h4>
+                        </div>
+                        <button 
+                          onClick={removePromotions}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-white text-red-500 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors shadow-sm"
+                          title="Batalkan semua diskon promosi"
+                        >
+                          <XCircleIcon className="h-4 w-4" />
+                          <span className="text-xs font-medium">Batalkan</span>
+                        </button>
+                      </div>
+                      <div className="ml-8 space-y-3">
+                        {appliedPromotions.map((applied, index) => (
+                          <div key={index} className="flex justify-between items-start bg-white p-2 rounded-lg border border-green-100">
+                            <div>
+                              <p className="text-sm font-medium text-gray-800">{applied.promotion.name}</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                                  {applied.promotion.type === 'PRODUCT_DISCOUNT' && 'Diskon Produk'}
+                                  {applied.promotion.type === 'CATEGORY_DISCOUNT' && 'Diskon Kategori'}
+                                  {applied.promotion.type === 'BULK_DISCOUNT' && 'Diskon Grosir'}
+                                  {applied.promotion.type === 'BUY_X_GET_Y' && 'Beli X Dapat Y'}
+                                </span>
+                                <p className="text-xs text-green-600 font-medium">Diskon: {formatCurrency(applied.discount)}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        <div className="pt-3 border-t border-green-200 mt-2">
+                          <p className="text-sm text-green-700 font-medium flex items-center justify-between">
+                            <span>Total diskon promosi:</span>
+                            <span className="text-base">{formatCurrency(promotionDiscount)}</span>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
                   {availablePromotions.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      Tidak ada promosi tersedia
+                    <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                      <div className="text-4xl mb-2">🏷️</div>
+                      <p className="font-medium text-gray-600">Tidak ada promosi tersedia</p>
+                      <p className="text-sm text-gray-500 mt-1">Promosi akan muncul di sini saat tersedia</p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {availablePromotions.map((promotion) => (
-                        <div key={promotion.id} className="border border-gray-200 rounded-lg p-4">
-                          <h4 className="font-medium text-gray-900 mb-2">{promotion.name}</h4>
-                          <p className="text-sm text-green-600 font-medium mb-3">
-                            {promotion.type === 'PRODUCT_DISCOUNT' && 'Diskon Produk'}
-                            {promotion.type === 'CATEGORY_DISCOUNT' && 'Diskon Kategori'}
-                            {promotion.type === 'BULK_DISCOUNT' && 'Diskon Grosir'}
-                            {promotion.type === 'BUY_X_GET_Y' && 'Beli X Dapat Y'}
-                          </p>
-                          <div className="bg-green-50 rounded-lg p-2">
-                            <p className="text-xs text-green-700 font-medium">Otomatis diterapkan saat syarat terpenuhi</p>
-                          </div>
-                        </div>
-                      ))}
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {availablePromotions.map((promotion) => {
+                          // Check if this promotion is applied
+                          const isApplied = appliedPromotions.some(ap => ap.promotion.id === promotion.id);
+                          
+                          return (
+                            <div 
+                              key={promotion.id} 
+                              className={`border rounded-lg p-4 transition-all ${isApplied 
+                                ? 'border-green-300 bg-green-50 shadow-md' 
+                                : 'border-gray-200 hover:border-green-300 hover:shadow-sm bg-white'}`}
+                            >
+                              <div className="flex justify-between items-start mb-2">
+                                <h4 className="font-medium text-gray-900">{promotion.name}</h4>
+                                {isApplied && (
+                                  <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-medium">
+                                    Aktif
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 mb-3">
+                                <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full ${
+                                  promotion.type === 'PRODUCT_DISCOUNT' ? 'bg-blue-100 text-blue-700' :
+                                  promotion.type === 'CATEGORY_DISCOUNT' ? 'bg-purple-100 text-purple-700' :
+                                  promotion.type === 'BULK_DISCOUNT' ? 'bg-amber-100 text-amber-700' :
+                                  'bg-green-100 text-green-700'}`}>
+                                  {promotion.type === 'PRODUCT_DISCOUNT' ? 'P' :
+                                   promotion.type === 'CATEGORY_DISCOUNT' ? 'C' :
+                                   promotion.type === 'BULK_DISCOUNT' ? 'B' : 'XY'}
+                                </span>
+                                <p className="text-sm font-medium">
+                                  {promotion.type === 'PRODUCT_DISCOUNT' && 'Diskon Produk'}
+                                  {promotion.type === 'CATEGORY_DISCOUNT' && 'Diskon Kategori'}
+                                  {promotion.type === 'BULK_DISCOUNT' && 'Diskon Grosir'}
+                                  {promotion.type === 'BUY_X_GET_Y' && 'Beli X Dapat Y'}
+                                </p>
+                              </div>
+                              <div className={`rounded-lg p-2.5 ${isApplied ? 'bg-green-100' : 'bg-gray-50'}`}>
+                                <p className="text-xs text-gray-700 font-medium flex items-center gap-1.5">
+                                  <AutomaticIcon className="h-4 w-4 text-green-600" />
+                                  Otomatis diterapkan saat syarat terpenuhi
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500 italic">Promosi akan otomatis diterapkan saat syarat terpenuhi</p>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1069,6 +1344,7 @@ export default function CashierPage() {
                             width={200}
                             height={200}
                             className="w-full h-full object-cover rounded-lg group-hover:scale-105 transition-transform duration-200"
+                            unoptimized={true}
                             onError={(e) => {
                               const target = e.target as HTMLImageElement;
                               target.style.display = 'none';
@@ -1105,6 +1381,24 @@ export default function CashierPage() {
                         <h3 className="font-semibold text-gray-900 text-sm line-clamp-2 leading-tight group-hover:text-blue-600 transition-colors">
                           {product.name}
                         </h3>
+                        
+                        {product.productCode && (
+                          <p className="text-gray-500 text-xs">
+                            Kode: {product.productCode}
+                          </p>
+                        )}
+                        
+                        {product.size && (
+                          <p className="text-gray-500 text-xs">
+                            Ukuran: {product.size}
+                          </p>
+                        )}
+                        
+                        {product.color && (
+                          <p className="text-gray-500 text-xs">
+                            Warna: {product.color}
+                          </p>
+                        )}
                         
                         <div className="flex items-center justify-between">
                           <p className="text-blue-600 font-bold text-sm">{formatCurrency(product.price)}</p>
@@ -1150,7 +1444,7 @@ export default function CashierPage() {
 
           {/* Cart Section */}
           <div className="xl:col-span-1">
-            <div className="bg-white rounded-lg border border-gray-200 p-6 sticky top-6 max-h-[calc(100vh-4rem)] overflow-y-auto">
+            <div className="bg-white rounded-lg border border-gray-200 p-6 sticky top-20 max-h-[calc(100vh-6rem)] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-900 flex items-center">
                   <ShoppingCartIcon className="h-5 w-5 mr-2 text-blue-600" />
@@ -1291,36 +1585,55 @@ export default function CashierPage() {
                   <p className="text-gray-400 text-center py-8 text-sm">Keranjang kosong</p>
                 ) : (
                   cart.map(item => (
-                    <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
+                    <div key={item.id} className="flex items-start justify-between p-4 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 mb-3">
                       <div className="flex-1">
-                        <h4 className="font-medium text-sm text-gray-800">{item.name}</h4>
-                        <p className="text-blue-500 text-sm">{formatCurrency(item.price)} x {item.quantity}</p>
-                        <p className="text-xs text-gray-400">{item.category.name}</p>
+                        <h4 className="font-semibold text-sm text-gray-900 mb-1">{item.name}</h4>
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {item.productCode && (
+                            <span className="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-md">
+                              <span className="mr-1">📋</span> {item.productCode}
+                            </span>
+                          )}
+                          {item.size && (
+                            <span className="inline-flex items-center px-2 py-1 bg-blue-50 text-blue-600 text-xs rounded-md">
+                              <span className="mr-1">📏</span> {item.size}
+                            </span>
+                          )}
+                          {item.color && (
+                            <span className="inline-flex items-center px-2 py-1 bg-purple-50 text-purple-600 text-xs rounded-md">
+                              <span className="mr-1">🎨</span> {item.color}
+                            </span>
+                          )}
+                          <span className="inline-flex items-center px-2 py-1 bg-green-50 text-green-600 text-xs rounded-md">
+                            <span className="mr-1">🏷️</span> {item.category.name}
+                          </span>
+                        </div>
+                        <p className="text-blue-600 text-sm font-medium">{formatCurrency(item.price)} x {item.quantity}</p>
                       </div>
-                      <div className="flex items-center space-x-1">
-                        <button
-                          onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                          className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
-                        >
-                          <MinusIcon className="h-3 w-3" />
-                        </button>
-                        <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
-                        <button
-                          onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                          className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
-                          disabled={item.quantity >= item.stock}
-                        >
-                          <PlusIcon className="h-3 w-3" />
-                        </button>
-                        <button
-                          onClick={() => removeFromCart(item.id)}
-                          className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors ml-1"
-                        >
-                          <TrashIcon className="h-3 w-3" />
-                        </button>
-                      </div>
-                      <div className="ml-3 text-right">
-                        <p className="font-medium text-sm text-gray-800">{formatCurrency(item.price * item.quantity)}</p>
+                      <div className="flex flex-col items-end gap-2">
+                        <p className="font-bold text-sm text-gray-900">{formatCurrency(item.price * item.quantity)}</p>
+                        <div className="flex items-center bg-gray-100 rounded-lg p-1">
+                          <button
+                            onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                            className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded-md transition-colors"
+                          >
+                            <MinusIcon className="h-4 w-4" />
+                          </button>
+                          <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
+                          <button
+                            onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                            className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded-md transition-colors"
+                            disabled={item.quantity >= item.stock}
+                          >
+                            <PlusIcon className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => removeFromCart(item.id)}
+                            className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-md transition-colors ml-1"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))
@@ -1393,9 +1706,7 @@ export default function CashierPage() {
                   <div className="space-y-2">
                     {[
                       { value: 'CASH', label: 'Tunai', icon: BanknotesIcon },
-                      { value: 'CARD', label: 'Kartu', icon: CreditCardIcon },
-                      { value: 'DIGITAL_WALLET', label: 'Dompet Digital', icon: CreditCardIcon },
-                      { value: 'E_WALLET', label: 'E-Wallet (Xendit)', icon: DevicePhoneMobileIcon },
+                      { value: 'DOKU', label: 'DOKU Payment', icon: DevicePhoneMobileIcon },
                     ].map(method => {
                       const IconComponent = method.icon
                       return (
@@ -1571,7 +1882,18 @@ export default function CashierPage() {
                       <tbody className="bg-white divide-y divide-gray-200">
                         {completedTransaction.items.map((item: CartItem) => (
                           <tr key={item.id}>
-                            <td className="px-4 py-2 text-sm text-gray-900">{item.name}</td>
+                            <td className="px-4 py-2 text-sm text-gray-900">
+                              {item.name}
+                              {item.productCode && (
+                                <div className="text-xs text-gray-500">Kode: {item.productCode}</div>
+                              )}
+                              {item.size && (
+                                <div className="text-xs text-gray-500">Ukuran: {item.size}</div>
+                              )}
+                              {item.color && (
+                                <div className="text-xs text-gray-500">Warna: {item.color}</div>
+                              )}
+                            </td>
                             <td className="px-4 py-2 text-sm text-gray-900">{item.quantity}</td>
                             <td className="px-4 py-2 text-sm text-gray-900">
                               {formatCurrency(item.price)}
@@ -1665,18 +1987,20 @@ export default function CashierPage() {
         </div>
       )}
 
-      {/* Xendit Payment Modal */}
-      {showXenditModal && pendingTransaction && (
-        <XenditPaymentModal
-          isOpen={showXenditModal}
+      {/* E-Wallet payments are now handled by DOKU */}
+
+      {/* DOKU Payment Modal */}
+      {showDOKUModal && pendingTransaction && (
+        <DOKUPaymentModal
+          isOpen={showDOKUModal}
           onClose={() => {
-            setShowXenditModal(false)
+            setShowDOKUModal(false)
             setPendingTransaction(null)
             setIsProcessing(false)
           }}
           transactionData={pendingTransaction}
-          onSuccess={handleXenditPaymentSuccess}
-          onError={handleXenditPaymentError}
+          onSuccess={handleDOKUPaymentSuccess}
+          onError={handleDOKUPaymentError}
         />
       )}
       </div>

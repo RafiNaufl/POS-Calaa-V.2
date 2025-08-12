@@ -13,16 +13,38 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Check if user is admin or manager to see all details
+    const isAdminOrManager = session.user.role === 'ADMIN' || session.user.role === 'MANAGER'
+    
     const voucher = await prisma.voucher.findUnique({
       where: { id: params.id },
-      include: {
-        transactions: {
-          include: {
-            transaction: true,
-            user: true,
-            member: true
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        description: true,
+        type: true,
+        value: true,
+        minPurchase: true,
+        maxDiscount: true,
+        usageLimit: true,
+        usageCount: true,
+        perUserLimit: true,
+        startDate: true,
+        endDate: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        // Only include transactions data for admin/manager users
+        ...(isAdminOrManager && {
+          transactions: {
+            include: {
+              transaction: true,
+              user: true,
+              member: true
+            }
           }
-        }
+        })
       }
     })
 
@@ -68,7 +90,12 @@ export async function PUT(
 
     // Check if voucher exists
     const existingVoucher = await prisma.voucher.findUnique({
-      where: { id: params.id }
+      where: { id: params.id },
+      select: {
+        id: true,
+        code: true,
+        isActive: true
+      }
     })
 
     if (!existingVoucher) {
@@ -76,7 +103,7 @@ export async function PUT(
     }
 
     // Validate required fields
-    if (!code || !name || !type || !value || !startDate || !endDate) {
+    if (!code || !name || !type || value === undefined || !startDate || !endDate) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -113,21 +140,34 @@ export async function PUT(
       }
     }
 
+    // Remove restrictedToProducts and restrictedToCategories from the data if they exist
+    const { restrictedToProducts, restrictedToCategories, ...safeVoucherData } = body;
+    
     const updatedVoucher = await prisma.voucher.update({
       where: { id: params.id },
       data: {
-        code,
-        name,
-        description,
-        type,
-        value,
-        minPurchase,
-        maxDiscount,
-        usageLimit,
-        perUserLimit,
+        ...safeVoucherData,
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         isActive: isActive !== undefined ? isActive : existingVoucher.isActive
+      },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        description: true,
+        type: true,
+        value: true,
+        minPurchase: true,
+        maxDiscount: true,
+        usageLimit: true,
+        usageCount: true,
+        perUserLimit: true,
+        startDate: true,
+        endDate: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true
       }
     })
 
@@ -154,7 +194,10 @@ export async function DELETE(
     // Check if voucher exists
     const existingVoucher = await prisma.voucher.findUnique({
       where: { id: params.id },
-      include: {
+      select: {
+        id: true,
+        code: true,
+        name: true,
         transactions: true
       }
     })
@@ -166,7 +209,7 @@ export async function DELETE(
     // Check if voucher has been used in transactions
     if (existingVoucher.transactions.length > 0) {
       return NextResponse.json(
-        { error: 'Cannot delete voucher that has been used in transactions' },
+        { error: `Cannot delete voucher "${existingVoucher.name}" (${existingVoucher.code}) because it has been used in transactions` },
         { status: 400 }
       )
     }

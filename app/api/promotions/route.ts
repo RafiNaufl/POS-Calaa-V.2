@@ -116,12 +116,12 @@ export async function POST(request: NextRequest) {
         description,
         type,
         discountValue,
-        discountType,
+        discountType, // Menambahkan discountType karena diperlukan oleh TypeScript
         minQuantity,
         buyQuantity,
         getQuantity,
-        startDate: new Date(startDate),
-        endDate: new Date(endDate),
+        startDate: startDate ? new Date(startDate) : new Date(),
+        endDate: endDate ? new Date(endDate) : new Date(),
         productPromotions: productIds ? {
           create: productIds.map((productId: string) => ({
             productId

@@ -1,4 +1,4 @@
-'use client'
+"use client"
 
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
@@ -19,9 +19,12 @@ interface ProductForm {
   name: string
   description: string
   price: string
+  costPrice: string
   stock: string
   categoryId: string
   image: string
+  size: string
+  color: string
 }
 
 interface Product {
@@ -29,6 +32,7 @@ interface Product {
   name: string
   description?: string
   price: number
+  costPrice?: number
   stock: number
   category: string
   categoryName: string
@@ -49,94 +53,63 @@ export default function EditProductPage() {
     name: '',
     description: '',
     price: '',
+    costPrice: '',
     stock: '',
     categoryId: '',
     image: '',
+    size: '',
+    color: '',
   })
   const [errors, setErrors] = useState<Partial<ProductForm>>({})
 
-  // Sample products data - in real app, this would come from API
-  const sampleProducts: Product[] = useMemo(() => [
-    {
-      id: '1',
-      name: 'Nasi Goreng Spesial',
-      description: 'Nasi goreng dengan telur, ayam, dan sayuran',
-      price: 25000,
-      stock: 20,
-      category: '1',
-      categoryName: 'Makanan Utama',
-      isActive: true,
-      createdAt: '2024-01-15',
-    },
-    {
-      id: '2',
-      name: 'Mie Ayam Bakso',
-      description: 'Mie ayam dengan bakso dan pangsit',
-      price: 20000,
-      stock: 15,
-      category: '1',
-      categoryName: 'Makanan Utama',
-      isActive: true,
-      createdAt: '2024-01-15',
-    },
-    {
-      id: '3',
-      name: 'Ayam Bakar',
-      description: 'Ayam bakar bumbu kecap dengan lalapan',
-      price: 30000,
-      stock: 10,
-      category: '1',
-      categoryName: 'Makanan Utama',
-      isActive: true,
-      createdAt: '2024-01-15',
-    },
-    {
-      id: '4',
-      name: 'Es Teh Manis',
-      description: 'Teh manis dingin segar',
-      price: 5000,
-      stock: 50,
-      category: '2',
-      categoryName: 'Minuman',
-      isActive: true,
-      createdAt: '2024-01-15',
-    },
-    {
-      id: '5',
-      name: 'Jus Jeruk',
-      description: 'Jus jeruk segar tanpa gula tambahan',
-      price: 12000,
-      stock: 25,
-      category: '2',
-      categoryName: 'Minuman',
-      isActive: true,
-      createdAt: '2024-01-15',
-    },
-  ], [])
+  // Fetch product data from API
 
   // Load categories and product data
   useEffect(() => {
-    setCategories([
-      { id: '1', name: 'Makanan Utama' },
-      { id: '2', name: 'Minuman' },
-      { id: '3', name: 'Dessert' },
-      { id: '4', name: 'Snack' },
-    ])
-
-    // Load product data
-    const product = sampleProducts.find(p => p.id === productId)
-    if (product) {
-      setForm({
-        name: product.name,
-        description: product.description || '',
-        price: product.price.toString(),
-        stock: product.stock.toString(),
-        categoryId: product.category,
-        image: product.image || '',
-      })
+    const fetchCategories = async () => {
+      try {
+        const response = await fetch('/api/categories')
+        if (!response.ok) {
+          throw new Error('Failed to fetch categories')
+        }
+        const data = await response.json()
+        setCategories(data)
+      } catch (error) {
+        console.error('Error fetching categories:', error)
+        toast.error('Gagal memuat data kategori')
+      }
     }
-    setLoadingProduct(false)
-  }, [productId, sampleProducts])
+
+    const fetchProduct = async () => {
+      try {
+        const response = await fetch(`/api/products/${productId}`)
+        if (!response.ok) {
+          throw new Error('Failed to fetch product')
+        }
+        const product = await response.json()
+        
+        setForm({
+          name: product.name,
+          description: product.description || '',
+          price: product.price.toString(),
+          costPrice: product.costPrice?.toString() || '',
+          stock: product.stock.toString(),
+          categoryId: product.categoryId,
+          image: product.image || '',
+          size: product.size || '',
+          color: product.color || '',
+        })
+      } catch (error) {
+        console.error('Error fetching product:', error)
+        toast.error('Gagal memuat data produk')
+      } finally {
+        setLoadingProduct(false)
+      }
+    }
+
+    fetchCategories()
+    fetchProduct()
+  }, [productId])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -159,6 +132,10 @@ export default function EditProductPage() {
       newErrors.price = 'Harga wajib diisi'
     } else if (isNaN(Number(form.price)) || Number(form.price) <= 0) {
       newErrors.price = 'Harga harus berupa angka positif'
+    }
+    
+    if (form.costPrice.trim() && (isNaN(Number(form.costPrice)) || Number(form.costPrice) < 0)) {
+      newErrors.costPrice = 'Harga pokok harus berupa angka non-negatif'
     }
 
     if (!form.stock.trim()) {
@@ -186,13 +163,39 @@ export default function EditProductPage() {
     setLoading(true)
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500))
+      // Prepare data for API
+      const productData = {
+        id: productId,
+        name: form.name.trim(),
+        price: form.price,
+        costPrice: form.costPrice || '0',
+        stock: form.stock,
+        categoryId: form.categoryId,
+        description: form.description.trim(),
+        image: form.image,
+        size: form.size.trim(),
+        color: form.color.trim()
+      }
+      
+      // Send to API
+      const response = await fetch(`/api/products/${productId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(productData),
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Gagal memperbarui produk')
+      }
       
       toast.success('Produk berhasil diperbarui!')
       router.push('/products')
     } catch (error) {
-      toast.error('Gagal memperbarui produk')
+      console.error('Error updating product:', error)
+      toast.error(error instanceof Error ? error.message : 'Gagal memperbarui produk')
     } finally {
       setLoading(false)
     }
@@ -209,6 +212,15 @@ export default function EditProductPage() {
     
     if (errors.price) {
       setErrors(prev => ({ ...prev, price: '' }))
+    }
+  }
+  
+  const handleCostPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, '')
+    setForm(prev => ({ ...prev, costPrice: value }))
+    
+    if (errors.costPrice) {
+      setErrors(prev => ({ ...prev, costPrice: '' }))
     }
   }
 
@@ -248,7 +260,7 @@ export default function EditProductPage() {
 
   if (loadingProduct) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Memuat data produk...</p>
@@ -258,9 +270,9 @@ export default function EditProductPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b">
+      <header className="bg-white shadow-md border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center py-4">
             <Link href="/products" className="mr-4">
@@ -272,7 +284,7 @@ export default function EditProductPage() {
       </header>
 
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="bg-white rounded-lg shadow">
+        <div className="bg-white rounded-lg shadow-md border border-gray-200">
           <form onSubmit={handleSubmit} className="p-6 space-y-6">
             {/* Product Image */}
             <div>
@@ -289,6 +301,7 @@ export default function EditProductPage() {
                         width={96}
                         height={96}
                         className="w-full h-full object-cover rounded-lg"
+                        unoptimized={true}
                       />
                       <button
                         type="button"
@@ -334,7 +347,7 @@ export default function EditProductPage() {
                 name="name"
                 value={form.name}
                 onChange={handleInputChange}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                   errors.name ? 'border-red-300' : 'border-gray-300'
                 }`}
                 placeholder="Masukkan nama produk"
@@ -355,28 +368,28 @@ export default function EditProductPage() {
                 value={form.description}
                 onChange={handleInputChange}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Masukkan deskripsi produk (opsional)"
               />
             </div>
 
-            {/* Price and Stock */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Price, Cost Price, and Stock */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
                 <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-2">
-                  Harga *
+                  Harga Jual *
                 </label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
-                    Rp
-                  </span>
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="text-gray-500 sm:text-sm">Rp</span>
+                  </div>
                   <input
                     type="text"
                     id="price"
                     name="price"
                     value={formatCurrency(form.price)}
                     onChange={handlePriceChange}
-                    className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                       errors.price ? 'border-red-300' : 'border-gray-300'
                     }`}
                     placeholder="0"
@@ -384,6 +397,31 @@ export default function EditProductPage() {
                 </div>
                 {errors.price && (
                   <p className="mt-1 text-sm text-red-600">{errors.price}</p>
+                )}
+              </div>
+              
+              <div>
+                <label htmlFor="costPrice" className="block text-sm font-medium text-gray-700 mb-2">
+                  HPP
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="text-gray-500 sm:text-sm">Rp</span>
+                  </div>
+                  <input
+                    type="text"
+                    id="costPrice"
+                    name="costPrice"
+                    value={formatCurrency(form.costPrice)}
+                    onChange={handleCostPriceChange}
+                    className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                      errors.costPrice ? 'border-red-300' : 'border-gray-300'
+                    }`}
+                    placeholder="0"
+                  />
+                </div>
+                {errors.costPrice && (
+                  <p className="mt-1 text-sm text-red-600">{errors.costPrice}</p>
                 )}
               </div>
 
@@ -398,7 +436,7 @@ export default function EditProductPage() {
                   value={form.stock}
                   onChange={handleInputChange}
                   min="0"
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                     errors.stock ? 'border-red-300' : 'border-gray-300'
                   }`}
                   placeholder="0"
@@ -419,7 +457,7 @@ export default function EditProductPage() {
                 name="categoryId"
                 value={form.categoryId}
                 onChange={handleInputChange}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                   errors.categoryId ? 'border-red-300' : 'border-gray-300'
                 }`}
               >
@@ -435,18 +473,53 @@ export default function EditProductPage() {
               )}
             </div>
 
+            {/* Size and Color */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Size */}
+              <div>
+                <label htmlFor="size" className="block text-sm font-medium text-gray-700 mb-2">
+                  Ukuran
+                </label>
+                <input
+                  type="text"
+                  id="size"
+                  name="size"
+                  value={form.size}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Contoh: S, M, L, XL, 38, 40, dll"
+                />
+              </div>
+
+              {/* Color */}
+              <div>
+                <label htmlFor="color" className="block text-sm font-medium text-gray-700 mb-2">
+                  Warna/Corak
+                </label>
+                <input
+                  type="text"
+                  id="color"
+                  name="color"
+                  value={form.color}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Contoh: Merah, Biru, Motif Bunga, dll"
+                />
+              </div>
+            </div>
+
             {/* Submit Buttons */}
             <div className="flex justify-end space-x-4 pt-6 border-t">
               <Link
                 href="/products"
-                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium shadow-sm"
               >
                 Batal
               </Link>
               <button
                 type="submit"
                 disabled={loading}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center shadow-sm"
               >
                 {loading ? (
                   <>

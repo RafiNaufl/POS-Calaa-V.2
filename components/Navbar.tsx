@@ -1,9 +1,9 @@
-'use client'
+"use client"
 
-import { useState } from 'react'
-import { useSession, signOut } from 'next-auth/react'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { useState } from "react"
+import { useSession, signOut } from "next-auth/react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import {
   Bars3Icon,
   XMarkIcon,
@@ -33,7 +33,6 @@ const navigation: NavItem[] = [
   { name: 'Member', href: '/members', icon: UserIcon, roles: ['CASHIER'] },
   { name: 'Transaksi', href: '/transactions', icon: ShoppingCartIcon, roles: ['ADMIN', 'CASHIER'] },
   { name: 'Laporan', href: '/reports', icon: DocumentTextIcon, roles: ['ADMIN', 'CASHIER'] },
-  { name: 'Biaya Operasional', href: '/operational-expenses', icon: BanknotesIcon, roles: ['ADMIN'] },
   { name: 'Pengguna', href: '/users', icon: UsersIcon, roles: ['ADMIN'] },
 ]
 

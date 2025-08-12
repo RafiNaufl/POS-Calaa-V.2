@@ -1,4 +1,4 @@
-'use client'
+"use client"
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
@@ -14,6 +14,7 @@ import {
   ClockIcon,
 } from '@heroicons/react/24/outline'
 import ReceiptPreview from '../../components/ReceiptPreview'
+import Navbar from '@/components/Navbar'
 
 interface Transaction {
   id: string
@@ -293,6 +294,7 @@ export default function TransactionsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <Navbar />
       {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

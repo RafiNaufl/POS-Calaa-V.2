@@ -1,14 +1,14 @@
-'use client'
+"use client"
 
-import { useState } from 'react'
-import { signIn, getSession } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
-import toast from 'react-hot-toast'
+import { useState } from "react"
+import { signIn, getSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
+import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline"
+import toast from "react-hot-toast"
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
@@ -18,29 +18,29 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      const result = await signIn('credentials', {
+      const result = await signIn("credentials", {
         email,
         password,
         redirect: false
       })
 
       if (result?.error) {
-        toast.error('Email atau password salah')
+        toast.error("Email atau password salah")
       } else {
-        toast.success('Login berhasil!')
+        toast.success("Login berhasil!")
         const session = await getSession()
         
         // Redirect based on role
-        if (session?.user?.role === 'ADMIN') {
-          router.push('/dashboard')
-        } else if (session?.user?.role === 'CASHIER') {
-          router.push('/cashier')
+        if (session?.user?.role === "ADMIN") {
+          router.push("/dashboard")
+        } else if (session?.user?.role === "CASHIER") {
+          router.push("/cashier")
         } else {
-          router.push('/dashboard')
+          router.push("/dashboard")
         }
       }
     } catch (error) {
-      toast.error('Terjadi kesalahan saat login')
+      toast.error("Terjadi kesalahan saat login")
     } finally {
       setIsLoading(false)
     }

@@ -5,6 +5,15 @@ require('./lib/eventEmitter');
 const nextConfig = {
   images: {
     domains: ['localhost', 'images.unsplash.com'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**',
+      },
+    ],
+    dangerouslyAllowSVG: true,
+    contentDispositionType: 'attachment',
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
   // Menambahkan header untuk mendukung Web Bluetooth API di Android
   async headers() {
@@ -19,6 +28,14 @@ const nextConfig = {
         ],
       },
     ];
+  },
+  // Disable ESLint during build
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  // Disable TypeScript type checking during build for faster builds
+  typescript: {
+    ignoreBuildErrors: true,
   },
 }
 

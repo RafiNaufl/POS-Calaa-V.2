@@ -150,12 +150,12 @@ export async function PUT(
           description: body.description,
           type: body.type,
           discountValue: body.discountValue,
-          discountType: body.discountType,
+          discountType: body.discountType, // Menambahkan discountType karena diperlukan oleh TypeScript
           minQuantity: body.minQuantity,
           buyQuantity: body.buyQuantity,
           getQuantity: body.getQuantity,
-          startDate: body.startDate,
-          endDate: body.endDate,
+          startDate: body.startDate ? new Date(body.startDate) : new Date(),
+          endDate: body.endDate ? new Date(body.endDate) : new Date(),
           isActive: body.isActive
         }
       })

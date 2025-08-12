@@ -1,4 +1,4 @@
-'use client'
+"use client"
 
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -187,6 +187,14 @@ export default function DashboardPage() {
       href: '/transactions',
       color: 'bg-red-500',
       roles: ['ADMIN', 'CASHIER']
+    },
+    {
+      title: 'Biaya Operasional',
+      description: 'Kelola biaya operasional',
+      icon: BanknotesIcon,
+      href: '/operational-expenses',
+      color: 'bg-amber-500',
+      roles: ['ADMIN']
     },
     {
       title: 'Pengguna',

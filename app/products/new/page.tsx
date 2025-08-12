@@ -1,4 +1,4 @@
-'use client'
+"use client"
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
@@ -20,6 +20,7 @@ interface ProductForm {
   name: string
   description: string
   price: string
+  costPrice: string
   stock: string
   categoryId: string
   image: string
@@ -33,6 +34,7 @@ export default function NewProductPage() {
     name: '',
     description: '',
     price: '',
+    costPrice: '',
     stock: '',
     categoryId: '',
     image: '',
@@ -99,6 +101,10 @@ export default function NewProductPage() {
     } else if (isNaN(Number(form.price)) || Number(form.price) <= 0) {
       newErrors.price = 'Harga harus berupa angka positif'
     }
+    
+    if (form.costPrice.trim() && (isNaN(Number(form.costPrice)) || Number(form.costPrice) < 0)) {
+      newErrors.costPrice = 'Harga pokok harus berupa angka non-negatif'
+    }
 
     if (!form.stock.trim()) {
       newErrors.stock = 'Stok wajib diisi'
@@ -130,6 +136,7 @@ export default function NewProductPage() {
         name: form.name,
         description: form.description,
         price: Number(form.price),
+        costPrice: form.costPrice.trim() ? Number(form.costPrice) : 0,
         stock: Number(form.stock),
         categoryId: form.categoryId,
         image: form.image,
@@ -199,21 +206,21 @@ export default function NewProductPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b">
+      <header className="bg-white shadow-md border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center py-4">
             <Link href="/products" className="mr-4">
               <ArrowLeftIcon className="h-6 w-6 text-gray-600 hover:text-gray-900" />
             </Link>
-            <h1 className="text-2xl font-bold text-gray-900">Tambah Produk Baru</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Tambah Produk</h1>
           </div>
         </div>
       </header>
 
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="bg-white rounded-lg shadow">
+        <div className="bg-white rounded-lg shadow-md border border-gray-200">
           <form onSubmit={handleSubmit} className="p-6 space-y-6">
             {/* Product Image */}
             <div>
@@ -230,6 +237,7 @@ export default function NewProductPage() {
                         width={96}
                         height={96}
                         className="w-full h-full object-cover rounded-lg"
+                        unoptimized={true}
                       />
                       <button
                         type="button"
@@ -275,7 +283,7 @@ export default function NewProductPage() {
                 name="name"
                 value={form.name}
                 onChange={handleInputChange}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                   errors.name ? 'border-red-300' : 'border-gray-300'
                 }`}
                 placeholder="Masukkan nama produk"
@@ -296,32 +304,64 @@ export default function NewProductPage() {
                 value={form.description}
                 onChange={handleInputChange}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Masukkan deskripsi produk (opsional)"
               />
             </div>
 
-            {/* Price and Stock */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Price, Cost Price, and Stock */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
                 <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-2">
-                  Harga (IDR) *
+                  Harga Jual (IDR) *
                 </label>
-                <input
-                  type="number"
-                  id="price"
-                  name="price"
-                  value={form.price}
-                  onChange={handleInputChange}
-                  min="0"
-                  step="1000"
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="text-gray-500 sm:text-sm">Rp</span>
+                  </div>
+                  <input
+                    type="number"
+                    id="price"
+                    name="price"
+                    value={form.price}
+                    onChange={handleInputChange}
+                    min="0"
+                    step="1000"
+                    className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                     errors.price ? 'border-red-300' : 'border-gray-300'
                   }`}
                   placeholder="0"
                 />
+              </div>
                 {errors.price && (
                   <p className="mt-1 text-sm text-red-600">{errors.price}</p>
+                )}
+              </div>
+              
+              <div>
+                <label htmlFor="costPrice" className="block text-sm font-medium text-gray-700 mb-2">
+                  HPP (IDR)
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="text-gray-500 sm:text-sm">Rp</span>
+                  </div>
+                  <input
+                    type="number"
+                    id="costPrice"
+                    name="costPrice"
+                    value={form.costPrice}
+                    onChange={handleInputChange}
+                    min="0"
+                    step="1000"
+                    className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                    errors.costPrice ? 'border-red-300' : 'border-gray-300'
+                  }`}
+                  placeholder="0"
+                />
+              </div>
+                {errors.costPrice && (
+                  <p className="mt-1 text-sm text-red-600">{errors.costPrice}</p>
                 )}
               </div>
 
@@ -336,7 +376,7 @@ export default function NewProductPage() {
                   value={form.stock}
                   onChange={handleInputChange}
                   min="0"
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                     errors.stock ? 'border-red-300' : 'border-gray-300'
                   }`}
                   placeholder="0"
@@ -357,7 +397,7 @@ export default function NewProductPage() {
                 name="categoryId"
                 value={form.categoryId}
                 onChange={handleInputChange}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                   errors.categoryId ? 'border-red-300' : 'border-gray-300'
                 }`}
               >
@@ -377,24 +417,30 @@ export default function NewProductPage() {
             <div className="flex justify-end space-x-4 pt-6 border-t">
               <Link
                 href="/products"
-                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors"
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium shadow-sm"
               >
                 Batal
               </Link>
               <button
                 type="submit"
                 disabled={loading}
-                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg font-medium transition-colors flex items-center"
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center shadow-sm"
               >
-                {loading && <div className="spinner mr-2"></div>}
-                {loading ? 'Menyimpan...' : 'Simpan Produk'}
+                {loading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Menyimpan...
+                  </>
+                ) : (
+                  'Simpan Produk'
+                )}
               </button>
             </div>
           </form>
         </div>
 
         {/* Help Text */}
-        <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="mt-6 bg-white border border-blue-200 rounded-lg p-4 shadow-sm">
           <h3 className="text-sm font-medium text-blue-800 mb-2">Tips:</h3>
           <ul className="text-sm text-blue-700 space-y-1">
             <li>• Gunakan nama produk yang jelas dan mudah dipahami</li>

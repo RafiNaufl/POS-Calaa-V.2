@@ -1,415 +1,121 @@
-# Aplikasi Point of Sale (POS) untuk Penjualan Makanan
+# POS Fashion App
 
-Aplikasi Point of Sale (POS) yang lengkap dan modern untuk bisnis penjualan makanan, dibangun menggunakan Next.js 14 dengan TypeScript dan Tailwind CSS.
+## Deployment Guide for Vercel
 
-## 🚀 Fitur Utama
+### Database Configuration
 
-### 📊 Dashboard
-- Overview penjualan harian
-- Statistik produk dan transaksi
-- Monitoring stok rendah
-- Navigasi cepat ke semua fitur
+The application is experiencing a `PrismaClientInitializationError` because it's trying to connect to a local PostgreSQL database at `localhost:5432` when deployed on Vercel. This won't work because Vercel's serverless functions can't connect to your local machine.
 
-### 💰 Sistem Kasir
-- Interface kasir yang intuitif
-- Pencarian produk real-time
-- Filter berdasarkan kategori
-- Keranjang belanja dengan kalkulasi otomatis
-- Multiple metode pembayaran (Tunai, Kartu, E-Wallet)
-- Sistem voucher dan promosi otomatis
-- Member points dan loyalty program
-- Cetak struk otomatis
+### Solution
 
-### 🍔 Manajemen Produk
-- CRUD produk lengkap
-- Upload gambar produk
-- Manajemen stok
-- Kategori produk
-- Status aktif/nonaktif
-- Filter dan pencarian
+1. **Set up a hosted PostgreSQL database**
+   - Use Vercel Postgres (recommended)
+   - Or another hosted PostgreSQL provider (Supabase, Railway, Neon, etc.)
 
-### 📂 Manajemen Kategori
-- Tambah, edit, hapus kategori
-- Validasi kategori yang sedang digunakan
-- Statistik produk per kategori
+2. **Configure environment variables in Vercel**
+   - Go to your Vercel project dashboard
+   - Navigate to Settings > Environment Variables
+   - Add the following environment variables:
+     - `DATABASE_URL`: Your main PostgreSQL connection string with connection pooling parameters
+       - Example: `postgresql://user:password@host:port/database?connection_limit=5&pool_timeout=10`
+     - If using Vercel Postgres, also add:
+       - `POSTGRES_PRISMA_URL`: Connection string with pooling
+       - `POSTGRES_URL_NON_POOLING`: Direct connection string
 
-### 📈 Laporan Penjualan
-- Grafik tren penjualan
-- Distribusi penjualan per kategori
-- Produk terlaris
-- Export laporan (JSON)
-- Filter berdasarkan periode
+3. **Update your schema.prisma file**
+   - The schema.prisma file has been updated to support connection pooling
+   - Connection pooling is configured via URL parameters, not in the PrismaClient constructor
+   - Uncomment the Vercel Postgres specific lines if you're using Vercel Postgres
 
-### 📋 Riwayat Transaksi
-- Daftar semua transaksi
-- Filter berdasarkan status, metode pembayaran, tanggal
-- Detail transaksi lengkap
-- Cetak ulang struk
-- Pencarian transaksi
+4. **Connection pooling configuration**
+   - **Important**: Connection pooling must be configured in the database URL parameters
+   - Add `connection_limit=5&pool_timeout=10` to your DATABASE_URL
+   - Do NOT configure connection pooling in the PrismaClient constructor as it will cause type errors
+   - For Vercel Postgres, connection pooling is handled automatically
 
-### 👥 Manajemen Pengguna
-- Sistem role (Admin, Manager, Kasir)
-- CRUD pengguna
-- Aktivasi/deaktivasi akun
-- Tracking login terakhir
+### Deployment Steps
 
-### 🎟️ Sistem Voucher
-- Buat dan kelola voucher diskon
-- Voucher berdasarkan persentase atau nominal
-- Minimum pembelian dan batas penggunaan
-- Validasi voucher real-time
-- Tracking penggunaan voucher
-
-### 🎯 Sistem Promosi
-- Promosi "Beli X Gratis Y"
-- Promosi diskon berdasarkan kategori
-- Promosi minimum pembelian
-- Kombinasi multiple promosi
-- Kalkulasi diskon otomatis
-
-### 👤 Manajemen Member
-- Registrasi member dengan nomor telepon
-- Sistem poin reward
-- Tukar poin dengan diskon
-- Tracking aktivitas member
-- Laporan member dan poin
-
-## 🛠️ Teknologi yang Digunakan
-
-- **Framework**: Next.js 14 (App Router)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **Database**: Prisma ORM (PostgreSQL/MySQL/SQLite)
-- **Authentication**: NextAuth.js
-- **Icons**: Heroicons
-- **Charts**: Recharts
-- **Notifications**: React Hot Toast
-- **Date Handling**: date-fns
-
-## 🌐 Live Demo
-
-**🚀 Aplikasi sudah live dan dapat diakses di:**
-- **Production**: https://pos-system-jygwq094r-naufal-rafis-projects.vercel.app
-- **Preview**: https://pos-system-cm0yd0yn5-naufal-rafis-projects.vercel.app
-
-### Login Demo
-- **Admin**: admin@pos.com / password
-- **Kasir**: kasir@pos.com / password
-
-## 📦 Instalasi
-
-### Prasyarat
-- Node.js 18+ 
-- npm atau yarn
-- Vercel account (untuk deployment)
-- Prisma Accelerate database (cloud database)
-
-### Langkah Instalasi
-
-1. **Clone repository**
-   ```bash
-   git clone <repository-url>
-   cd pos-app
+1. Push your code changes to your GitHub repository
+2. Connect your repository to Vercel if not already done
+3. Configure the environment variables as described above
+4. Deploy your application using the Vercel dashboard or CLI:
+   ```
+   npm install -g vercel
+   vercel login
+   vercel
    ```
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   # atau
-   yarn install
-   ```
+### Running Migrations and Seeding the Database
 
-3. **Setup environment variables**
-   ```bash
-   cp .env.example .env
-   ```
-   
-   Edit file `.env` dan sesuaikan dengan konfigurasi Anda:
-   ```env
-   # Database (Prisma Accelerate)
-   DATABASE_URL="prisma+postgres://accelerate.prisma-data.net/?api_key=your-api-key"
-   
-   # NextAuth
-   NEXTAUTH_URL="http://localhost:3000"
-   NEXTAUTH_SECRET="your-secret-key"
-   
-   # Xendit Configuration (Payment Gateway)
-   XENDIT_SECRET_KEY="your-xendit-secret-key"
-   XENDIT_PUBLIC_KEY="your-xendit-public-key"
-   XENDIT_WEBHOOK_TOKEN="your-webhook-token"
-   ```
+#### Option 1: Using Prisma Migrate Deploy in Build Script
 
-4. **Setup database**
-   ```bash
-   # Generate Prisma client
-   npx prisma generate
-   
-   # Run database migrations
-   npx prisma migrate dev --name init
-   
-   # Seed database dengan data sample
-   npx tsx prisma/seed.ts
-   ```
+The project is already configured to automatically run migrations during deployment with the following build script in `package.json`:
 
-5. **Jalankan aplikasi**
-   ```bash
-   npm run dev
-   # atau
-   yarn dev
-   ```
-
-6. **Buka aplikasi**
-   Akses aplikasi di `http://localhost:3000`
-
-### Deployment ke Vercel
-
-1. **Link project ke Vercel**
-   ```bash
-   vercel link
-   ```
-
-2. **Set environment variables di Vercel Dashboard**
-   - `DATABASE_URL`: Prisma Accelerate connection string
-   - `NEXTAUTH_URL`: Production URL (https://your-app.vercel.app)
-   - `NEXTAUTH_SECRET`: Random secret key
-   - `XENDIT_SECRET_KEY`: Xendit secret key
-   - `XENDIT_PUBLIC_KEY`: Xendit public key
-   - `XENDIT_WEBHOOK_TOKEN`: Xendit webhook token
-
-3. **Deploy ke production**
-   ```bash
-   vercel --prod
-   ```
-
-## 🗄️ Struktur Database
-
-### User
-- id, email, name, password, role, createdAt, updatedAt
-
-### Category
-- id, name, description, createdAt, updatedAt
-
-### Product
-- id, name, description, price, stock, image, categoryId, isActive, createdAt, updatedAt
-
-### Transaction
-- id, userId, subtotal, tax, total, paymentMethod, status, voucherCode, voucherDiscount, promoDiscount, pointsUsed, pointsEarned, memberPhone, createdAt, updatedAt
-
-### TransactionItem
-- id, transactionId, productId, quantity, price, total
-
-### Member
-- id, phone, name, email, points, totalSpent, createdAt, updatedAt
-
-### Voucher
-- id, code, name, type, value, minPurchase, maxUses, usedCount, isActive, validFrom, validTo, createdAt, updatedAt
-
-### Promotion
-- id, name, type, value, minPurchase, buyQuantity, getQuantity, categoryId, isActive, validFrom, validTo, createdAt, updatedAt
-
-## 🎯 Penggunaan
-
-### Login Default
-- **Admin**: admin@pos.com / password
-- **Kasir**: kasir@pos.com / password
-
-### Workflow Kasir
-1. Login ke sistem
-2. Pilih menu "Kasir" dari dashboard
-3. (Opsional) Input nomor telepon member untuk poin
-4. Pilih produk dari daftar atau gunakan pencarian
-5. Atur quantity di keranjang
-6. (Opsional) Gunakan voucher diskon
-7. (Opsional) Gunakan poin member untuk diskon
-8. Sistem otomatis menerapkan promosi yang berlaku
-9. Pilih metode pembayaran
-10. Proses pembayaran
-11. Cetak struk dengan detail diskon dan poin
-
-### Manajemen Produk
-1. Akses menu "Produk"
-2. Tambah produk baru dengan informasi lengkap
-3. Upload gambar produk
-4. Set kategori dan harga
-5. Kelola stok
-
-### Laporan
-1. Akses menu "Laporan"
-2. Pilih periode laporan
-3. Analisis grafik penjualan
-4. Export data untuk analisis lebih lanjut
-
-### Manajemen Voucher
-1. Akses menu "Voucher"
-2. Buat voucher baru dengan kode unik
-3. Set tipe diskon (persentase/nominal)
-4. Tentukan minimum pembelian dan batas penggunaan
-5. Set periode berlaku voucher
-6. Aktivasi/deaktivasi voucher
-
-### Manajemen Promosi
-1. Akses menu "Promosi"
-2. Pilih tipe promosi (Buy X Get Y, Diskon Kategori, dll)
-3. Set parameter promosi (quantity, diskon, kategori)
-4. Tentukan minimum pembelian jika diperlukan
-5. Set periode berlaku promosi
-6. Aktivasi/deaktivasi promosi
-
-### Manajemen Member
-1. Akses menu "Member"
-2. Registrasi member baru dengan nomor telepon
-3. Lihat detail poin dan riwayat transaksi member
-4. Monitor aktivitas dan total pengeluaran member
-5. Kelola sistem poin reward
-
-## 🔧 Konfigurasi
-
-### Pengaturan Pajak
-Ubah nilai `TAX_RATE` di file `.env.local` (contoh: 0.1 untuk 10%)
-
-### Mata Uang
-Ubah nilai `CURRENCY` di file `.env.local` (contoh: "IDR", "USD")
-
-### Sistem Poin Member
-Konfigurasi sistem poin di file `.env.local`:
-```env
-POINTS_PER_RUPIAH="1"     # 1 poin per 1000 rupiah
-POINT_VALUE="1000"        # 1 poin = 1000 rupiah diskon
+```json
+{
+  "scripts": {
+    "build": "prisma generate && prisma migrate deploy && NEXT_DISABLE_ESLINT=1 SKIP_LINT=1 next build"
+  }
+}
 ```
 
-### Upload Gambar
-Konfigurasi penyimpanan gambar di `next.config.js`
+This ensures that:
+1. Prisma Client is generated (`prisma generate`)
+2. Any pending migrations are applied to your database (`prisma migrate deploy`)
+3. The Next.js application is built
 
-## 📱 Responsive Design
+**Important**: The `prisma` package is correctly listed as a dependency (not a devDependency) in your `package.json`, which is necessary for Vercel builds as Vercel prunes development dependencies during build.
 
-Aplikasi ini fully responsive dan dapat digunakan di:
-- Desktop (1024px+)
-- Tablet (768px - 1023px)
-- Mobile (320px - 767px)
+#### Option 1: Using Prisma Migrate Deploy in Build Script
 
-## 🔒 Keamanan
+To automatically run migrations during deployment, update your `package.json` build script:
 
-- Authentication dengan NextAuth.js
-- Password hashing dengan bcrypt
-- JWT token untuk session management
-- Role-based access control
-- Input validation dan sanitization
-- CSRF protection
+```json
+{
+  "scripts": {
+    "build": "prisma generate && prisma migrate deploy && next build"
+  }
+}
+```
 
-## 🚀 Deployment
+**Important**: For this to work, you need to move `prisma` from `devDependencies` to `dependencies` in your `package.json`, as Vercel prunes dev dependencies during build.
 
-### Status Deployment Saat Ini
-✅ **Aplikasi sudah berhasil di-deploy ke Vercel dengan konfigurasi berikut:**
-- **Database**: Prisma Accelerate (Cloud PostgreSQL)
-- **Authentication**: NextAuth.js dengan secret yang aman
-- **Payment Gateway**: Xendit integration
-- **Environment**: Production-ready
+#### Option 2: Using the API Endpoint for Seeding
 
-### Vercel (Recommended) ✅ **DEPLOYED**
-1. ✅ Repository sudah terhubung ke Vercel
-2. ✅ Environment variables sudah dikonfigurasi:
-   - `DATABASE_URL`: Prisma Accelerate connection
-   - `NEXTAUTH_URL`: Production URL
-   - `NEXTAUTH_SECRET`: Secure secret key
-   - `XENDIT_*`: Payment gateway configuration
-3. ✅ Database migrations berhasil dijalankan
-4. ✅ Database seeding completed
-5. ✅ Production deployment active
+This project includes an API endpoint at `/api/seed` that can be used to seed the database. After deployment:
 
-**Live URLs:**
-- Production: https://pos-system-jygwq094r-naufal-rafis-projects.vercel.app
-- Preview: https://pos-system-cm0yd0yn5-naufal-rafis-projects.vercel.app
+1. Access your deployed application's seed endpoint: `https://your-app-url.vercel.app/api/seed`
+2. Send a POST request to this endpoint (using a tool like Postman or curl)
 
-### Manual Deployment (Jika diperlukan)
 ```bash
-# Deploy preview
-vercel
-
-# Deploy production
-vercel --prod
+curl -X POST https://your-app-url.vercel.app/api/seed
 ```
 
-### Docker (Alternative)
-```bash
-# Build image
-docker build -t pos-app .
+#### Option 3: Using Separate Preview/Production Databases
 
-# Run container
-docker run -p 3000:3000 pos-app
+For pull request previews, you can set up a separate database to avoid affecting your production database:
+
+1. Create a second database for preview deployments
+2. In Vercel, add a separate `DATABASE_URL` environment variable for the Preview environment
+3. This allows you to safely run migrations and seeds on preview deployments
+
+### Troubleshooting
+
+If you continue to experience database connection issues:
+
+1. Check that your database is accessible from Vercel's servers
+2. Verify that your connection strings are correct with proper connection pooling parameters
+3. Make sure your database server allows connections from Vercel's IP addresses
+4. Check Vercel logs for more detailed error messages
+5. If you see `PrismaClientInitializationError`, verify your database connection configuration
+6. If migrations fail, try running them manually using the Prisma CLI locally with the production database URL
+
+### Local Development
+
+For local development, you can continue using your local PostgreSQL database by setting the appropriate `DATABASE_URL` in your `.env.local` file:
+
+```
+DATABASE_URL="postgresql://postgres:password@localhost:5432/pos_db?schema=public&connection_limit=5&pool_timeout=10"
 ```
 
-### Database Setup (Cloud)
-✅ **Database sudah dikonfigurasi dengan:**
-- **Provider**: Prisma Accelerate
-- **Type**: PostgreSQL (Cloud)
-- **Status**: Connected and migrated
-- **Seeding**: Completed with sample data
-
-## 🤝 Kontribusi
-
-1. Fork repository
-2. Buat feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to branch (`git push origin feature/AmazingFeature`)
-5. Open Pull Request
-
-## 📝 License
-
-Distributed under the MIT License. See `LICENSE` for more information.
-
-## 📞 Support
-
-Jika Anda memiliki pertanyaan atau membutuhkan bantuan:
-- Email: support@pos-app.com
-- Documentation: [Wiki](link-to-wiki)
-- Issues: [GitHub Issues](link-to-issues)
-
-## 🔄 Changelog
-
-### v2.1.0 (2025-01-19) ✅ **CURRENT VERSION**
-- 🚀 **Production deployment ke Vercel berhasil**
-- 🗄️ **Migrasi database ke Prisma Accelerate (Cloud PostgreSQL)**
-- 🔐 **NextAuth.js secret configuration untuk production**
-- 💳 **Xendit payment gateway integration**
-- 🌐 **Live demo tersedia dengan URL production dan preview**
-- 📦 **Database seeding dengan sample data lengkap**
-- 🔧 **Environment variables production-ready**
-- 📋 **Updated README dengan deployment status**
-
-### v2.0.0 (2024-01-22)
-- 🎟️ Sistem voucher lengkap dengan validasi
-- 🎯 Sistem promosi multi-tipe (Buy X Get Y, Diskon Kategori)
-- 👤 Manajemen member dengan sistem poin reward
-- 💰 Integrasi voucher dan promosi di kasir
-- 📊 Laporan voucher dan member
-- 🔧 Konfigurasi sistem poin yang fleksibel
-- 🎨 UI/UX improvements untuk semua fitur baru
-
-### v1.0.0 (2024-01-21)
-- ✨ Initial release
-- 🎯 Complete POS functionality
-- 📊 Dashboard and reporting
-- 👥 User management
-- 🍔 Product and category management
-- 💰 Transaction processing
-
-## 🎯 Roadmap
-
-- [x] ~~Customer management~~ ✅ **Completed (Member System)**
-- [x] ~~Loyalty program~~ ✅ **Completed (Points System)**
-- [ ] Mobile app (React Native)
-- [ ] Inventory management
-- [ ] Multi-store support
-- [ ] Advanced analytics
-- [ ] Integration with payment gateways
-- [ ] Barcode scanning
-- [ ] Kitchen display system
-- [ ] Online ordering integration
-- [ ] WhatsApp notifications
-- [ ] Advanced voucher features (referral codes)
-- [ ] Seasonal promotions
-- [ ] Member tier system
-
----
-
-**Dibuat dengan ❤️ untuk bisnis makanan Indonesia**
+This includes connection pooling parameters for better performance.

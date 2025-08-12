@@ -85,7 +85,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     
     // Periksa apakah biaya operasional ada
     const existingExpense = await withRetry(() => prisma.$queryRaw`
-      SELECT * FROM "OperationalExpense" WHERE id = ${id}
+      SELECT * FROM "operational_expense" WHERE id = ${id}
     `)
     
     if (!existingExpense) {
@@ -94,7 +94,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     
     // Perbarui biaya operasional
     const updatedExpense = await withRetry(() => prisma.$executeRaw`
-      UPDATE "OperationalExpense"
+      UPDATE "operational_expense"
       SET name = ${data.name},
           amount = ${parseFloat(data.amount)},
           category = ${data.category},
@@ -139,7 +139,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     
     // Hapus biaya operasional
     await withRetry(() => prisma.$executeRaw`
-      DELETE FROM "OperationalExpense" WHERE id = ${id}
+      DELETE FROM "operational_expense" WHERE id = ${id}
     `)
     
     return NextResponse.json({ message: 'Operational expense deleted successfully' }, { status: 200 })

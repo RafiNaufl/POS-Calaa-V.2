@@ -3,6 +3,32 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+interface CartItem {
+  productId: string
+  quantity: number
+  price: number
+  categoryId: string
+  name?: string
+}
+
+// Define the Voucher type
+interface Voucher {
+  id: string
+  code: string
+  name: string
+  type: string
+  value: number
+  minPurchase?: number | null
+  maxDiscount?: number | null
+  usageLimit?: number | null
+  usageCount: number
+  perUserLimit?: number | null
+  startDate: Date
+  endDate: Date
+  isActive: boolean
+  transactions: any[]
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -11,19 +37,37 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { code, subtotal, userId, memberId } = body
+    const { code, subtotal, userId, memberId, cartItems } = body
 
-    if (!code || !subtotal) {
+    if (!code || subtotal === undefined) {
       return NextResponse.json(
         { error: 'Voucher code and subtotal are required' },
         { status: 400 }
       )
     }
 
-    // Find voucher by code
-    const voucher = await prisma.voucher.findUnique({
-      where: { code },
-      include: {
+    // Find voucher by code (case insensitive)
+    const voucher = await prisma.voucher.findFirst({
+      where: { 
+        code: { 
+          equals: code,
+          mode: 'insensitive'
+        }
+      },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        type: true,
+        value: true,
+        minPurchase: true,
+        maxDiscount: true,
+        usageLimit: true,
+        usageCount: true,
+        perUserLimit: true,
+        startDate: true,
+        endDate: true,
+        isActive: true,
         transactions: {
           where: {
             OR: [
@@ -34,7 +78,8 @@ export async function POST(request: NextRequest) {
         }
       }
     })
-
+    
+    // Ensure we have the voucher
     if (!voucher) {
       return NextResponse.json(
         { error: 'Voucher not found', valid: false },
@@ -64,7 +109,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: `Minimum purchase of ${voucher.minPurchase} required`,
-          valid: false
+          valid: false,
+          minPurchase: voucher.minPurchase
         },
         { status: 400 }
       )
@@ -79,9 +125,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Check per-user usage limit (only for members, not for guest transactions)
-    if (voucher.perUserLimit && memberId) {
+    if (voucher.perUserLimit && (userId || memberId)) {
       const userUsageCount = voucher.transactions.length
-      console.log(`Voucher ${code}: Member ${memberId} usage count = ${userUsageCount}, Per user limit = ${voucher.perUserLimit}`)
       if (userUsageCount >= voucher.perUserLimit) {
         return NextResponse.json(
           { error: `Personal usage limit exceeded (${userUsageCount}/${voucher.perUserLimit})`, valid: false },
@@ -111,7 +156,8 @@ export async function POST(request: NextRequest) {
         code: voucher.code,
         name: voucher.name,
         type: voucher.type,
-        value: voucher.value
+        value: voucher.value,
+        maxDiscount: voucher.maxDiscount
       },
       discountAmount: Math.round(discountAmount * 100) / 100
     })

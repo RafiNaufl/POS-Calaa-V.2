@@ -1,8 +1,9 @@
-'use client'
+"use client"
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeftIcon, MagnifyingGlassIcon, PlusIcon, PencilIcon, TrashIcon, Squares2X2Icon, TableCellsIcon, FunnelIcon, ChartBarIcon } from '@heroicons/react/24/outline'
+import Navbar from '@/components/Navbar'
 
 interface Member {
   id: string

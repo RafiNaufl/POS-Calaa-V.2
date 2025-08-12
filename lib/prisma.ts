@@ -4,18 +4,40 @@ import { PrismaClient } from '@prisma/client'
 const prismaClientSingleton = () => {
   return new PrismaClient({
     log: ['error', 'warn'],
-    // Add connection timeout and retry logic
+    // Add connection timeout and retry logic for serverless environment
     datasources: {
       db: {
         url: process.env.DATABASE_URL,
       },
     },
+    // Add connection retry logic for serverless environment
+    errorFormat: 'minimal',
+    // Note: Connection pooling is configured via DATABASE_URL parameters
+    // in the schema.prisma file, not here in the PrismaClient constructor
+  }).$extends({
+    query: {
+      // No need to remove dokuReferenceId anymore as the column exists in the database
+      transaction: {
+        async findMany({ args, query }) {
+          return query(args);
+        },
+        async findUnique({ args, query }) {
+          return query(args);
+        },
+        async findFirst({ args, query }) {
+          return query(args);
+        }
+      },
+    },
   })
 }
 
+// Define the return type of our extended Prisma client
+type ExtendedPrismaClient = ReturnType<typeof prismaClientSingleton>;
+
 // Singleton pattern for Prisma client to avoid connection issues during build
 const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined
+  prisma: ExtendedPrismaClient | undefined
 }
 
 export const prisma = globalForPrisma.prisma ?? prismaClientSingleton()

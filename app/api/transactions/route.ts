@@ -354,9 +354,9 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { id, paymentStatus, xenditChargeId, xenditReferenceId, status, amount, paymentMethod, transactionId } = body
+    const { id, paymentStatus, xenditChargeId, xenditReferenceId, dokuReferenceId, status, amount, paymentMethod, transactionId } = body
 
-    console.log('Updating transaction:', { id, paymentStatus, xenditChargeId, xenditReferenceId, status, amount, paymentMethod, transactionId })
+    console.log('Updating transaction:', { id, paymentStatus, xenditChargeId, xenditReferenceId, dokuReferenceId, status, amount, paymentMethod, transactionId })
 
     if (!id) {
       return NextResponse.json(
@@ -400,6 +400,7 @@ export async function PATCH(request: NextRequest) {
         ...(paymentStatus && { paymentStatus }),
         ...(xenditChargeId && { xenditChargeId }),
         ...(xenditReferenceId && { xenditReferenceId }),
+        ...(dokuReferenceId && { dokuReferenceId }),
         ...(status && { status }),
         ...(paymentStatus === 'PAID' && { paidAt: new Date() }),
         ...(amount !== undefined && { amount: parseFloat(amount.toString()) }),

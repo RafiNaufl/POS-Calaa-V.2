@@ -8,6 +8,8 @@ interface CartItem {
   quantity: number
   price: number
   categoryId: string
+  name?: string
+  image?: string
 }
 
 export async function POST(request: NextRequest) {
@@ -88,12 +90,12 @@ export async function POST(request: NextRequest) {
           // Simple percentage or fixed discount
           for (const item of applicableItems) {
             const itemTotal = item.price * item.quantity
-            if (promotion.discountValue <= 100) {
+            if (promotion.discountType === 'PERCENTAGE') {
               // Percentage discount
               promotionDiscount += (itemTotal * promotion.discountValue) / 100
             } else {
               // Fixed amount discount per item
-              promotionDiscount += promotion.discountValue * item.quantity
+              promotionDiscount += Math.min(promotion.discountValue * item.quantity, itemTotal)
             }
           }
           break
@@ -104,10 +106,10 @@ export async function POST(request: NextRequest) {
           const totalAmount = applicableItems.reduce((sum, item) => sum + (item.price * item.quantity), 0)
 
           if (promotion.minQuantity && totalQuantity >= promotion.minQuantity) {
-            if (promotion.discountValue <= 100) {
+            if (promotion.discountType === 'PERCENTAGE') {
               promotionDiscount += (totalAmount * promotion.discountValue) / 100
             } else {
-              promotionDiscount += promotion.discountValue
+              promotionDiscount += Math.min(promotion.discountValue, totalAmount)
             }
           }
           break
@@ -116,10 +118,14 @@ export async function POST(request: NextRequest) {
           // Buy X get Y free/discounted
           if (promotion.buyQuantity && promotion.getQuantity) {
             for (const item of applicableItems) {
-              const sets = Math.floor(item.quantity / promotion.buyQuantity)
-              const freeItems = Math.min(sets * promotion.getQuantity, item.quantity)
-              // Assume 100% discount for free items
-              promotionDiscount += item.price * freeItems
+              const sets = Math.floor(item.quantity / (promotion.buyQuantity || 1))
+              if (sets > 0) {
+                const freeItems = Math.min(sets * (promotion.getQuantity || 0), item.quantity - (sets * (promotion.buyQuantity || 1)))
+                if (freeItems > 0) {
+                  // Calculate discount for free items
+                  promotionDiscount += item.price * freeItems
+                }
+              }
             }
           }
           break
@@ -130,10 +136,21 @@ export async function POST(request: NextRequest) {
           id: promotion.id,
           name: promotion.name,
           type: promotion.type,
+          discountType: promotion.discountType,
+          discountValue: promotion.discountValue,
           discount: Math.round(promotionDiscount * 100) / 100,
+          promotion: {
+            id: promotion.id,
+            name: promotion.name,
+            type: promotion.type,
+            discountType: promotion.discountType,
+            discountValue: promotion.discountValue,
+          },
           applicableItems: applicableItems.map(item => ({
             productId: item.productId,
-            quantity: item.quantity
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price
           }))
         })
         totalDiscount += promotionDiscount

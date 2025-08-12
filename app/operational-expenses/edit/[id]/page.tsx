@@ -1,6 +1,6 @@
-'use client'
+"use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter, useParams } from 'next/navigation'
 import { format } from 'date-fns'
@@ -78,13 +78,7 @@ export default function EditOperationalExpensePage() {
   }, [session, router, toast])
   
   // Fetch expense details
-  useEffect(() => {
-    if (session && expenseId) {
-      fetchExpenseDetails()
-    }
-  }, [session, expenseId])
-  
-  const fetchExpenseDetails = async () => {
+  const fetchExpenseDetails = useCallback(async () => {
     setIsLoading(true)
     try {
       const response = await fetch(`/api/operational-expenses/${expenseId}`)
@@ -99,6 +93,7 @@ export default function EditOperationalExpensePage() {
           router.push('/operational-expenses')
           return
         }
+      
         throw new Error('Failed to fetch expense details')
       }
       
@@ -122,7 +117,14 @@ export default function EditOperationalExpensePage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [expenseId, toast, router])
+  
+  // Call fetchExpenseDetails when session and expenseId are available
+  useEffect(() => {
+    if (session && expenseId) {
+      fetchExpenseDetails()
+    }
+  }, [session, expenseId, fetchExpenseDetails])
   
   // Handle form input change
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {

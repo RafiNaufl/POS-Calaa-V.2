@@ -38,6 +38,8 @@ export const authOptions: NextAuthOptions = {
             return null
           }
 
+          // lastLogin feature has been removed
+
           return {
             id: user.id,
             email: user.email,

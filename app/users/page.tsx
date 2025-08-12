@@ -1,4 +1,4 @@
-'use client'
+"use client"
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
@@ -15,6 +15,7 @@ import {
   UserIcon,
 } from '@heroicons/react/24/outline'
 import { toast } from 'react-hot-toast'
+import Navbar from '@/components/Navbar'
 
 interface User {
   id: string
@@ -53,60 +54,30 @@ export default function UsersPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [formErrors, setFormErrors] = useState<Partial<UserFormData>>({})
 
-  // Sample data - in real app, this would come from API
+  // Fetch users from API
   useEffect(() => {
-    setLoading(true)
-    setTimeout(() => {
-      const sampleUsers: User[] = [
-        {
-          id: '1',
-          name: 'Admin User',
-          email: 'admin@pos.com',
-          role: 'ADMIN',
-          isActive: true,
-          createdAt: '2024-01-01',
-          lastLogin: '2024-01-21T10:30:00Z',
-        },
-        {
-          id: '2',
-          name: 'John Doe',
-          email: 'john@pos.com',
-          role: 'CASHIER',
-          isActive: true,
-          createdAt: '2024-01-05',
-          lastLogin: '2024-01-20T15:45:00Z',
-        },
-        {
-          id: '3',
-          name: 'Jane Smith',
-          email: 'jane@pos.com',
-          role: 'MANAGER',
-          isActive: true,
-          createdAt: '2024-01-10',
-          lastLogin: '2024-01-21T09:15:00Z',
-        },
-        {
-          id: '4',
-          name: 'Bob Wilson',
-          email: 'bob@pos.com',
-          role: 'CASHIER',
-          isActive: false,
-          createdAt: '2024-01-15',
-          lastLogin: '2024-01-18T14:20:00Z',
-        },
-        {
-          id: '5',
-          name: 'Alice Brown',
-          email: 'alice@pos.com',
-          role: 'CASHIER',
-          isActive: true,
-          createdAt: '2024-01-18',
-        },
-      ]
-      setUsers(sampleUsers)
-      setFilteredUsers(sampleUsers)
-      setLoading(false)
-    }, 1000)
+    const fetchUsers = async () => {
+      setLoading(true)
+      try {
+        const response = await fetch('/api/users')
+        
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to fetch users')
+        }
+        
+        const data = await response.json()
+        setUsers(data)
+        setFilteredUsers(data)
+      } catch (error) {
+        console.error('Error fetching users:', error)
+        toast.error('Gagal memuat data pengguna')
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    fetchUsers()
   }, [])
 
   // Filter users based on search and filters
@@ -177,56 +148,103 @@ export default function UsersPage() {
     setLoading(true)
     
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      
       if (editingUser) {
         // Update existing user
-        const updatedUsers = users.map((user) =>
-          user.id === editingUser.id
-            ? {
-                ...user,
-                name: formData.name,
-                email: formData.email,
-                role: formData.role,
-                isActive: formData.isActive,
-              }
-            : user
-        )
-        setUsers(updatedUsers)
+        const response = await fetch(`/api/users/${editingUser.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: formData.name,
+            email: formData.email,
+            password: formData.password.trim() !== '' ? formData.password : undefined,
+            role: formData.role,
+            isActive: formData.isActive,
+          }),
+        })
+        
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to update user')
+        }
+        
+        const updatedUser = await response.json()
+        
+        // Update local state
+        setUsers(users.map((user) => 
+          user.id === editingUser.id ? { ...user, ...updatedUser } : user
+        ))
+        
         toast.success('Pengguna berhasil diperbarui')
       } else {
         // Add new user
-        const newUser: User = {
-          id: Date.now().toString(),
-          name: formData.name,
-          email: formData.email,
-          role: formData.role,
-          isActive: formData.isActive,
-          createdAt: new Date().toISOString().split('T')[0],
+        const response = await fetch('/api/users', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: formData.name,
+            email: formData.email,
+            password: formData.password,
+            role: formData.role,
+            isActive: formData.isActive,
+          }),
+        })
+        
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to create user')
         }
+        
+        const newUser = await response.json()
+        
+        // Update local state
         setUsers([...users, newUser])
+        
         toast.success('Pengguna berhasil ditambahkan')
       }
       
       closeModal()
-    } catch (error) {
-      toast.error('Terjadi kesalahan saat menyimpan pengguna')
+    } catch (error: any) {
+      console.error('Error saving user:', error)
+      toast.error(error.message || 'Terjadi kesalahan saat menyimpan pengguna')
     } finally {
       setLoading(false)
     }
   }
 
-  const openModal = (user?: User) => {
+  const openModal = async (user?: User) => {
+    setFormErrors({})
+    
     if (user) {
-      setEditingUser(user)
-      setFormData({
-        name: user.name,
-        email: user.email,
-        password: '',
-        role: user.role,
-        isActive: user.isActive,
-      })
+      setLoading(true)
+      try {
+        // Fetch complete user data from API
+        const response = await fetch(`/api/users/${user.id}`)
+        
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to fetch user details')
+        }
+        
+        const userData = await response.json()
+        setEditingUser(userData)
+        setFormData({
+          name: userData.name,
+          email: userData.email,
+          password: '',
+          role: userData.role,
+          isActive: userData.isActive,
+        })
+      } catch (error: any) {
+        console.error('Error fetching user details:', error)
+        toast.error(error.message || 'Gagal memuat detail pengguna')
+        return
+      } finally {
+        setLoading(false)
+      }
     } else {
       setEditingUser(null)
       setFormData({
@@ -237,7 +255,7 @@ export default function UsersPage() {
         isActive: true,
       })
     }
-    setFormErrors({})
+    
     setShowPassword(false)
     setShowModal(true)
   }
@@ -257,22 +275,44 @@ export default function UsersPage() {
 
   const toggleUserStatus = async (userId: string) => {
     setLoading(true)
-    
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      const user = users.find((u) => u.id === userId)
+      if (!user) throw new Error('User not found')
       
-      const updatedUsers = users.map((user) =>
-        user.id === userId ? { ...user, isActive: !user.isActive } : user
+      // Determine the new status (opposite of current status)
+      const newStatus = !user.isActive
+      
+      const response = await fetch(`/api/users/${userId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          isActive: newStatus,
+        }),
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to update user status')
+      }
+      
+      // Get the updated user from the response
+      const updatedUser = await response.json()
+      
+      // Update local state - ensure isActive is explicitly set to the new status
+      // since the API response might not include it
+      const updatedUsers = users.map((u) =>
+        u.id === userId ? { ...u, ...updatedUser, isActive: newStatus } : u
       )
       setUsers(updatedUsers)
       
-      const user = users.find((u) => u.id === userId)
       toast.success(
-        `Pengguna ${user?.isActive ? 'dinonaktifkan' : 'diaktifkan'}`
+        `Pengguna ${newStatus ? 'diaktifkan' : 'dinonaktifkan'}`
       )
-    } catch (error) {
-      toast.error('Terjadi kesalahan saat mengubah status pengguna')
+    } catch (error: any) {
+      console.error('Error toggling user status:', error)
+      toast.error(error.message || 'Terjadi kesalahan saat mengubah status pengguna')
     } finally {
       setLoading(false)
     }
@@ -286,14 +326,21 @@ export default function UsersPage() {
     setLoading(true)
     
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      const response = await fetch(`/api/users/${userId}`, {
+        method: 'DELETE',
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to delete user')
+      }
       
       const updatedUsers = users.filter((user) => user.id !== userId)
       setUsers(updatedUsers)
       toast.success('Pengguna berhasil dihapus')
-    } catch (error) {
-      toast.error('Terjadi kesalahan saat menghapus pengguna')
+    } catch (error: any) {
+      console.error('Error deleting user:', error)
+      toast.error(error.message || 'Terjadi kesalahan saat menghapus pengguna')
     } finally {
       setLoading(false)
     }
@@ -351,6 +398,7 @@ export default function UsersPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <Navbar />
       {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

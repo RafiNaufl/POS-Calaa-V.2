@@ -1,9 +1,10 @@
-'use client'
+"use client"
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
+import Navbar from '@/components/Navbar'
 
 interface Product {
   id: string
@@ -353,7 +354,9 @@ export default function PromotionsPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div>
+      <Navbar />
+      <div className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-4">
           <button
@@ -587,6 +590,37 @@ export default function PromotionsPage() {
                   <option value="BULK_DISCOUNT">Diskon Bulk</option>
                   <option value="BUY_X_GET_Y">Beli X Gratis Y</option>
                 </select>
+                <div className="mt-2 p-3 bg-blue-50 rounded-lg text-sm text-blue-700">
+                  {formData.type === 'PRODUCT_DISCOUNT' && (
+                    <div>
+                      <p className="font-medium">Diskon Produk</p>
+                      <p>Memberikan diskon untuk produk tertentu. Pilih produk yang akan diberi diskon dan tentukan nilai diskonnya.</p>
+                    </div>
+                  )}
+                  {formData.type === 'CATEGORY_DISCOUNT' && (
+                    <div>
+                      <p className="font-medium">Diskon Kategori</p>
+                      <p>Memberikan diskon untuk semua produk dalam kategori tertentu. Pilih kategori yang akan diberi diskon.</p>
+                    </div>
+                  )}
+                  {formData.type === 'BULK_DISCOUNT' && (
+                    <div>
+                      <p className="font-medium">Diskon Grosir</p>
+                      <p>Memberikan diskon saat pelanggan membeli produk dalam jumlah tertentu. Tentukan jumlah minimum pembelian.</p>
+                    </div>
+                  )}
+                  {formData.type === 'BUY_X_GET_Y' && (
+                    <div>
+                      <p className="font-medium">Beli X Gratis Y</p>
+                      <p>Pelanggan mendapatkan produk gratis saat membeli jumlah tertentu. Contoh: beli 2 dapat 1 gratis.</p>
+                    </div>
+                  )}
+                  {!formData.type && (
+                    <div>
+                      <p>Pilih tipe promosi untuk melihat penjelasan.</p>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div>
@@ -758,25 +792,35 @@ export default function PromotionsPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Tanggal Mulai *
                   </label>
-                  <input
-                    type="datetime-local"
-                    required
-                    value={formData.startDate}
-                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                    className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
+                  <div className="relative">
+                    <input
+                      type="datetime-local"
+                      required
+                      value={formData.startDate}
+                      onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                      className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <div className="text-xs text-gray-500 mt-1">
+                      Waktu mulai promosi berlaku
+                    </div>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Tanggal Berakhir *
                   </label>
-                  <input
-                    type="datetime-local"
-                    required
-                    value={formData.endDate}
-                    onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                    className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
+                  <div className="relative">
+                    <input
+                      type="datetime-local"
+                      required
+                      value={formData.endDate}
+                      onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                      className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <div className="text-xs text-gray-500 mt-1">
+                      Waktu berakhir promosi
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -799,6 +843,7 @@ export default function PromotionsPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }

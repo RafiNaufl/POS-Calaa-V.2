@@ -6,20 +6,57 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const includeInactive = searchParams.get('includeInactive') === 'true'
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = parseInt(searchParams.get('limit') || '50')
+    const skip = (page - 1) * limit
     
     const whereClause = includeInactive ? {} : { isActive: true }
     
+    // Get total count for pagination info
+    const totalCount = await prisma.product.count({
+      where: whereClause
+    })
+    
+    // Get paginated products with selected fields only
     const products = await prisma.product.findMany({
       where: whereClause,
-      include: {
-        category: true
+      select: {
+        id: true,
+        name: true,
+        productCode: true,
+        price: true,
+        costPrice: true,
+        stock: true,
+        isActive: true,
+        size: true,
+        color: true,
+        image: true,
+        description: true,
+        createdAt: true,
+        categoryId: true,
+        category: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
       },
       orderBy: {
         name: 'asc'
-      }
+      },
+      skip,
+      take: limit
     })
 
-    return NextResponse.json(products)
+    return NextResponse.json({
+      products,
+      pagination: {
+        total: totalCount,
+        page,
+        limit,
+        totalPages: Math.ceil(totalCount / limit)
+      }
+    })
   } catch (error) {
     console.error('Error fetching products:', error)
     return NextResponse.json(
@@ -40,33 +77,63 @@ export async function POST(request: NextRequest) {
     // Extract data with proper validation
     const { 
       name, 
+      productCode,
       price, 
       categoryId, 
       stock, 
       description, 
       image,
-      isActive = true // Default to active if not provided
+      costPrice = 0, // Default cost price to 0 if not provided
+      isActive = true, // Default to active if not provided
+      size = '',
+      color = ''
     } = body
 
     // Validate required fields
-    if (!name || !categoryId) {
+    if (!name || !categoryId || !productCode || !size || !color) {
       return NextResponse.json(
-        { error: 'Name and category are required fields' },
+        { error: 'Name, product code, category, size, and color are required fields' },
+        { status: 400 }
+      )
+    }
+    
+    // Check if product code already exists
+    const existingProduct = await prisma.product.findFirst({
+      where: {
+        productCode: {
+          equals: productCode
+        }
+      }
+    })
+    
+    if (existingProduct) {
+      return NextResponse.json(
+        { error: 'Product code already exists' },
         { status: 400 }
       )
     }
 
     // Create the product with proper type conversion
+    const productData = {
+      name,
+      productCode,
+      price: typeof price === 'number' ? price : parseFloat(price),
+      categoryId,
+      stock: typeof stock === 'number' ? stock : parseInt(stock),
+      description: description || '',
+      image: image || '',
+      size,
+      color,
+      isActive
+    }
+
+    // Add costPrice separately to avoid TypeScript errors
+    if (costPrice !== undefined) {
+      (productData as any).costPrice = typeof costPrice === 'number' ? costPrice : parseFloat(costPrice || '0')
+    }
+
     const product = await prisma.product.create({
-      data: {
-        name,
-        price: typeof price === 'number' ? price : parseFloat(price),
-        categoryId,
-        stock: typeof stock === 'number' ? stock : parseInt(stock),
-        description: description || '',
-        image: image || '',
-        isActive
-      },
+      data: productData,
       include: {
         category: true
       }
@@ -89,17 +156,70 @@ export async function PUT(request: NextRequest) {
   
   try {
     const body = await request.json()
-    const { id, name, price, categoryId, stock, description } = body
+    const { id, name, price, costPrice, categoryId, stock, description, size, color, image, isActive, productCode } = body
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Product ID is required' },
+        { status: 400 }
+      )
+    }
+
+    // Validate required fields
+    if (!name || !categoryId || !productCode || !size || !color) {
+      return NextResponse.json(
+        { error: 'Name, product code, category, size, and color are required fields' },
+        { status: 400 }
+      )
+    }
+    
+    // Check if product code already exists for another product
+    if (productCode) {
+      const existingProduct = await prisma.product.findFirst({
+        where: {
+          productCode: {
+            equals: productCode
+          },
+          id: { not: id }
+        }
+      })
+      
+      if (existingProduct) {
+        return NextResponse.json(
+          { error: 'Product code already exists for another product' },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Prepare update data
+    const updateData: any = {
+      name,
+      price: parseFloat(price),
+      categoryId,
+      stock: parseInt(stock),
+      description: description || '',
+      size,
+      color,
+      productCode
+    }
+
+    // Add optional fields
+    if (costPrice !== undefined) {
+      updateData.costPrice = parseFloat(costPrice)
+    }
+    
+    if (image !== undefined) {
+      updateData.image = image
+    }
+    
+    if (isActive !== undefined) {
+      updateData.isActive = isActive
+    }
 
     const product = await prisma.product.update({
       where: { id },
-      data: {
-        name,
-        price: parseFloat(price),
-        categoryId,
-        stock: parseInt(stock),
-        description
-      },
+      data: updateData,
       include: {
         category: true
       }

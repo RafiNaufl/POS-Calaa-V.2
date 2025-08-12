@@ -13,9 +13,10 @@ Add these environment variables in your Vercel dashboard:
 DATABASE_URL=postgresql://username:password@host:port/database?schema=public
 NEXTAUTH_URL=https://your-app-name.vercel.app
 NEXTAUTH_SECRET=your-production-secret-key-here
-XENDIT_SECRET_KEY=your-production-xendit-secret-key
-XENDIT_PUBLIC_KEY=your-production-xendit-public-key
-XENDIT_WEBHOOK_TOKEN=your-production-xendit-webhook-token
+DOKU_CLIENT_ID=your-production-doku-client-id
+DOKU_SECRET_KEY=your-production-doku-secret-key
+DOKU_PUBLIC_KEY=your-production-doku-public-key
+DOKU_API_URL=https://api.doku.com
 ```
 
 ## Deployment Steps

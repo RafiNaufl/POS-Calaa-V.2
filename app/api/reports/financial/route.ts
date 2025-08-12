@@ -99,18 +99,7 @@ export async function GET(request: NextRequest) {
     const taxes = transactions.reduce((sum: number, t: any) => sum + t.tax, 0)
     const totalRevenue = transactions.reduce((sum: number, t: any) => sum + t.finalTotal, 0)
     
-    // Calculate cost of goods sold (COGS)
-    // Since we don't have actual cost data in the schema, we'll estimate it based on category
-    // In a real system, you would have product costs stored in the database
-    const categoryMargins: Record<string, number> = {
-      // Default margins by category (these are examples and should be replaced with real data)
-      'Makanan': 0.65, // 65% margin
-      'Minuman': 0.70, // 70% margin
-      'Dessert': 0.75,  // 75% margin
-      'Snack': 0.60,   // 60% margin
-      'default': 0.50  // 50% default margin
-    }
-    
+    // Calculate cost of goods sold (COGS) using actual cost price data
     let costOfGoodsSold = 0
     let grossProfit = 0
     
@@ -125,8 +114,13 @@ export async function GET(request: NextRequest) {
         if (item.product?.category) {
           const categoryName = item.product.category.name
           const revenue = item.subtotal
-          const margin = categoryMargins[categoryName] || categoryMargins.default
-          const cost = revenue * (1 - margin)
+          const quantity = item.quantity
+          const costPrice = item.product.costPrice || 0
+          const cost = costPrice * quantity
+          
+          // Calculate margin for this product
+          const unitPrice = item.price
+          const margin = unitPrice > 0 ? (unitPrice - costPrice) / unitPrice : 0
           
           // Add to total COGS
           costOfGoodsSold += cost
@@ -136,12 +130,24 @@ export async function GET(request: NextRequest) {
             cogsByCategory[categoryName] = 0
             revenueByCategory[categoryName] = 0
             profitByCategory[categoryName] = 0
-            marginByCategory[categoryName] = margin
+            marginByCategory[categoryName] = 0
           }
           
           cogsByCategory[categoryName] += cost
           revenueByCategory[categoryName] += revenue
           profitByCategory[categoryName] += (revenue - cost)
+          
+          // Update the average margin for this category
+          // We need to recalculate the weighted average margin
+          const currentRevenue = revenueByCategory[categoryName]
+          const currentMargin = marginByCategory[categoryName]
+          const previousRevenue = currentRevenue - revenue
+          
+          if (currentRevenue > 0) {
+            marginByCategory[categoryName] = previousRevenue > 0 ?
+              ((previousRevenue * currentMargin) + (revenue * margin)) / currentRevenue :
+              margin
+          }
         }
       })
     })

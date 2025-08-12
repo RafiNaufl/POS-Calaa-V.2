@@ -1,4 +1,4 @@
-'use client'
+"use client"
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
@@ -13,18 +13,26 @@ import {
   FunnelIcon,
 } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
+import EditProductForm from '../../components/EditProductForm'
+import AddProductForm from '../../components/AddProductForm'
+import Navbar from '@/components/Navbar'
 
 interface Product {
   id: string
   name: string
   description?: string
   price: number
+  costPrice?: number
   stock: number
   category: string
   categoryName: string
   isActive: boolean
   createdAt: string
   image?: string
+  productCode?: string
+  size?: string
+  color?: string
 }
 
 interface Category {
@@ -39,6 +47,9 @@ export default function ProductsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [showInactive, setShowInactive] = useState(false)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
 
   // Fetcher function for SWR
   const fetcher = async (url: string) => {
@@ -65,18 +76,22 @@ export default function ProductsPage() {
 
   // Transform products data
   useEffect(() => {
-    if (productsData) {
-      const transformedProducts = productsData.map((product: any) => ({
+    if (productsData && productsData.products) {
+      const transformedProducts = productsData.products.map((product: any) => ({
         id: product.id.toString(),
         name: product.name,
         description: product.description || '',
         price: product.price,
+        costPrice: product.costPrice || 0,
         stock: product.stock,
         category: product.categoryId.toString(),
         categoryName: product.category?.name || '',
         isActive: product.isActive,
-        createdAt: new Date(product.createdAt).toISOString().split('T')[0],
-        image: product.image
+        createdAt: product.createdAt ? new Date(product.createdAt).toISOString().split('T')[0] : '',
+        image: product.image,
+        productCode: product.productCode || '',
+        size: product.size || '',
+        color: product.color || ''
       }))
       setProducts(transformedProducts)
       setLoading(false)
@@ -85,7 +100,7 @@ export default function ProductsPage() {
 
   // Set categories data
   useEffect(() => {
-    if (categoriesData) {
+    if (categoriesData && Array.isArray(categoriesData)) {
       const transformedCategories = categoriesData.map((category: any) => ({
         id: category.id.toString(),
         name: category.name
@@ -98,6 +113,28 @@ export default function ProductsPage() {
   useEffect(() => {
     setLoading(productsLoading)
   }, [productsLoading])
+
+  // Function to open edit modal
+  const openEditModal = (productId: string) => {
+    setSelectedProductId(productId)
+    setIsEditModalOpen(true)
+  }
+
+  // Function to close edit modal
+  const closeEditModal = () => {
+    setIsEditModalOpen(false)
+    setSelectedProductId(null)
+  }
+
+  // Handle successful product edit
+  const handleEditSuccess = () => {
+    // Refresh product data
+    refreshProducts()
+    // Close the modal
+    closeEditModal()
+    // Show success message
+    toast.success('Produk berhasil diperbarui')
+  }
 
   // Handle product errors with fallback data
   useEffect(() => {
@@ -252,6 +289,18 @@ export default function ProductsPage() {
     const matchesStatus = showInactive ? true : product.isActive
     return matchesSearch && matchesCategory && matchesStatus
   })
+  
+  // Fungsi-fungsi modal sudah dideklarasikan di atas
+
+  // Function to handle successful product addition
+  const handleAddSuccess = () => {
+    // Refresh product data
+    refreshProducts()
+    // Close the modal
+    setIsAddModalOpen(false)
+    // Show success message
+    toast.success('Produk berhasil ditambahkan')
+  }
 
   const toggleProductStatus = (id: string) => {
     setProducts(products.map(product => 
@@ -299,6 +348,7 @@ export default function ProductsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <Navbar />
       {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -309,13 +359,13 @@ export default function ProductsPage() {
               </Link>
               <h1 className="text-2xl font-bold text-gray-900">Manajemen Produk</h1>
             </div>
-            <Link
-              href="/products/new"
+            <button
+              onClick={() => setIsAddModalOpen(true)}
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
             >
               <PlusIcon className="h-5 w-5 mr-2" />
               Tambah Produk
-            </Link>
+            </button>
           </div>
         </div>
       </header>
@@ -418,7 +468,10 @@ export default function ProductsPage() {
                       Kategori
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Harga
+                      Harga Jual
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Harga Pokok
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Stok
@@ -451,6 +504,7 @@ export default function ProductsPage() {
                                     target.style.display = 'none';
                                     target.nextElementSibling?.classList.remove('hidden');
                                   }}
+                                  unoptimized={true}
                                 />
                               ) : null}
                               <div className={`h-12 w-12 bg-gray-200 rounded-lg flex items-center justify-center ${product.image ? 'hidden' : ''}`}>
@@ -459,10 +513,22 @@ export default function ProductsPage() {
                             </div>
                             <div className="ml-4">
                               <div className="text-sm font-medium text-gray-900">
-                                {product.name}
+                                {product.name} {product.productCode && <span className="text-xs text-gray-500 ml-1">({product.productCode})</span>}
                               </div>
                               <div className="text-sm text-gray-500">
                                 {product.description}
+                              </div>
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {product.size && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                    Ukuran: {product.size}
+                                  </span>
+                                )}
+                                {product.color && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-pink-100 text-pink-800">
+                                    Warna: {product.color}
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -474,6 +540,9 @@ export default function ProductsPage() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {formatCurrency(product.price)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {formatCurrency(product.costPrice || 0)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${stockStatus.color}`}>
@@ -494,12 +563,12 @@ export default function ProductsPage() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex space-x-2">
-                            <Link
-                              href={`/products/${product.id}/edit`}
+                            <button
+                              onClick={() => openEditModal(product.id)}
                               className="text-blue-600 hover:text-blue-900"
                             >
                               <PencilIcon className="h-5 w-5" />
-                            </Link>
+                            </button>
                             <button
                               onClick={() => deleteProduct(product.id)}
                               className="text-red-600 hover:text-red-900"
@@ -525,6 +594,29 @@ export default function ProductsPage() {
 
 
       </main>
+
+      {/* Edit Product Modal */}
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          {selectedProductId && (
+            <EditProductForm 
+              productId={selectedProductId} 
+              onClose={closeEditModal}
+              onSuccess={handleEditSuccess}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+      
+      {/* Add Product Modal */}
+      <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <AddProductForm 
+            onClose={() => setIsAddModalOpen(false)} 
+            onSuccess={handleAddSuccess} 
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

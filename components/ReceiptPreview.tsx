@@ -1,9 +1,7 @@
-'use client'
+"use client"
 
-import React, { useState } from 'react'
-import { PrinterIcon, XMarkIcon } from '@heroicons/react/24/outline'
-import ThermalPrinter from './ThermalPrinter'
-import PrinterIntegration from './PrinterIntegration'
+import React, { useState } from "react"
+import { PrinterIcon, XMarkIcon } from "@heroicons/react/24/outline"
 
 interface Transaction {
   id: string
@@ -13,8 +11,8 @@ interface Transaction {
   subtotal: number
   tax: number
   total: number
-  paymentMethod: 'CASH' | 'CARD' | 'DIGITAL_WALLET'
-  status: 'COMPLETED' | 'CANCELLED' | 'PENDING'
+  paymentMethod: "CASH" | "CARD" | "DIGITAL_WALLET"
+  status: "COMPLETED" | "CANCELLED" | "PENDING"
   cashier: string
   customer?: string
   pointsUsed?: number
@@ -39,21 +37,21 @@ interface ReceiptPreviewProps {
 }
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
     minimumFractionDigits: 0,
   }).format(amount)
 }
 
 const getPaymentMethodLabel = (method: string) => {
   switch (method) {
-    case 'CASH':
-      return 'Tunai'
-    case 'CARD':
-      return 'Kartu'
-    case 'DIGITAL_WALLET':
-      return 'Dompet Digital'
+    case "CASH":
+      return "Tunai"
+    case "CARD":
+      return "Kartu"
+    case "DIGITAL_WALLET":
+      return "Dompet Digital"
     default:
       return method
   }
@@ -72,8 +70,6 @@ const formatDate = (dateString: string) => {
 
 export default function ReceiptPreview({ transaction, isOpen, onClose, onPrint }: ReceiptPreviewProps) {
   const [receiptHTML, setReceiptHTML] = useState('')
-  const [showThermalPrinter, setShowThermalPrinter] = useState(false)
-  const [showPrinterIntegration, setShowPrinterIntegration] = useState(false)
   
   if (!isOpen) return null
 
@@ -169,14 +165,14 @@ export default function ReceiptPreview({ transaction, isOpen, onClose, onPrint }
         </style>
       </head>
       <body>
-        <div class="header">
-          <div class="store-name">TOKO SERBAGUNA</div>
-          <div class="store-info">Jl. Contoh No. 123</div>
-          <div class="store-info">Telp: (021) 1234-5678</div>
-          <div class="store-info">Email: info@tokoserbaguna.com</div>
+        <div className="header">
+          <div className="store-name">TOKO SERBAGUNA</div>
+          <div className="store-info">Jl. Contoh No. 123</div>
+          <div className="store-info">Telp: (021) 1234-5678</div>
+          <div className="store-info">Email: info@tokoserbaguna.com</div>
         </div>
         
-        <div class="transaction-info">
+        <div className="transaction-info">
           <div>No. Transaksi: ${transaction.id}</div>
           <div>Tanggal: ${formatDate(transaction.date)}</div>
           <div>Waktu: ${transaction.time}</div>
@@ -184,11 +180,11 @@ export default function ReceiptPreview({ transaction, isOpen, onClose, onPrint }
           ${transaction.customer ? `<div>Pelanggan: ${transaction.customer}</div>` : ''}
         </div>
         
-        <div class="items">
+        <div className="items">
           ${transaction.items.map(item => `
-            <div class="item">
-              <div class="item-name">${item.name}</div>
-              <div class="item-details">
+            <div className="item">
+              <div className="item-name">${item.name}</div>
+              <div className="item-details">
                 <span>${item.quantity} x ${formatCurrency(item.price)}</span>
                 <span>${formatCurrency(item.total)}</span>
               </div>
@@ -196,51 +192,51 @@ export default function ReceiptPreview({ transaction, isOpen, onClose, onPrint }
           `).join('')}
         </div>
         
-        <div class="totals">
-          <div class="total-line">
+        <div className="totals">
+          <div className="total-line">
             <span>Subtotal:</span>
             <span>${formatCurrency(transaction.subtotal)}</span>
           </div>
-          <div class="total-line">
+          <div className="total-line">
             <span>Pajak:</span>
             <span>${formatCurrency(transaction.tax)}</span>
           </div>
           ${(transaction.pointsUsed ?? 0) > 0 ? `
-          <div class="total-line">
+          <div className="total-line">
             <span>Diskon Poin (${transaction.pointsUsed} poin):</span>
             <span>-${formatCurrency((transaction.pointsUsed ?? 0) * 1000)}</span>
           </div>` : ''}
           ${transaction.voucherCode && (transaction.voucherDiscount ?? 0) > 0 ? `
-          <div class="total-line">
+          <div className="total-line">
             <span>Diskon Voucher (${transaction.voucherCode}):</span>
             <span>-${formatCurrency(transaction.voucherDiscount ?? 0)}</span>
           </div>` : ''}
           ${(transaction.promotionDiscount ?? 0) > 0 ? `
-          <div class="total-line">
+          <div className="total-line">
             <span>Diskon Promosi:</span>
             <span>-${formatCurrency(transaction.promotionDiscount ?? 0)}</span>
           </div>` : ''}
-          <div class="total-line total-final">
+          <div className="total-line total-final">
             <span>TOTAL:</span>
             <span>${formatCurrency(transaction.total)}</span>
           </div>
         </div>
         
-        <div class="payment-info">
-          <div class="total-line">
+        <div className="payment-info">
+          <div className="total-line">
             <span>Pembayaran:</span>
             <span>${getPaymentMethodLabel(transaction.paymentMethod)}</span>
           </div>
-          <div class="total-line">
+          <div className="total-line">
             <span>Status:</span>
             <span>${transaction.status}</span>
           </div>
         </div>
         
-        <div class="footer">
+        <div className="footer">
           <div>Terima kasih atas kunjungan Anda!</div>
           <div>Barang yang sudah dibeli tidak dapat dikembalikan</div>
-          <div class="dashed-line"></div>
+          <div className="dashed-line"></div>
           <div>Dicetak pada: ${new Date().toLocaleString('id-ID')}</div>
         </div>
       </body>
@@ -391,44 +387,7 @@ export default function ReceiptPreview({ transaction, isOpen, onClose, onPrint }
             </button>
           </div>
           
-          <div className="mt-2 flex space-x-3">
-            <button
-              onClick={() => {
-                setReceiptHTML(generateReceiptHTML())
-                setShowThermalPrinter(true)
-                setShowPrinterIntegration(false)
-              }}
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center w-1/2"
-            >
-              <PrinterIcon className="h-5 w-5 mr-2" />
-              Cetak ke Printer Thermal (Web Bluetooth)
-            </button>
-            
-
-          </div>
-          
-          {showThermalPrinter && receiptHTML && (
-            <ThermalPrinter 
-              receiptHTML={receiptHTML} 
-              onPrintSuccess={() => {
-                onPrint()
-                setShowThermalPrinter(false)
-              }}
-              onPrintError={(error) => {
-                console.error('Print error:', error)
-              }}
-            />
-          )}
-          
-          {showPrinterIntegration && receiptHTML && (
-            <PrinterIntegration 
-              receiptHTML={receiptHTML} 
-              onClose={() => {
-                setShowPrinterIntegration(false)
-                onPrint()
-              }}
-            />
-          )}
+          {/* Thermal printer functionality has been removed */}
         </div>
       </div>
     </div>

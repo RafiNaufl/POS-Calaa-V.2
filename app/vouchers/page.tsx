@@ -1,9 +1,10 @@
-'use client'
+"use client"
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
+import Navbar from '@/components/Navbar'
 
 interface Voucher {
   id: string
@@ -31,6 +32,7 @@ export default function VouchersPage() {
   const [showForm, setShowForm] = useState(false)
   const [editingVoucher, setEditingVoucher] = useState<Voucher | null>(null)
   const [searchCode, setSearchCode] = useState('')
+  const [searchName, setSearchName] = useState('')
   const [filterActive, setFilterActive] = useState<string>('all')
 
   const [formData, setFormData] = useState({
@@ -52,6 +54,7 @@ export default function VouchersPage() {
     try {
       const params = new URLSearchParams()
       if (searchCode) params.append('code', searchCode)
+      if (searchName) params.append('name', searchName)
       if (filterActive !== 'all') params.append('active', filterActive)
 
       const response = await fetch(`/api/vouchers?${params}`)
@@ -64,7 +67,7 @@ export default function VouchersPage() {
     } finally {
       setLoading(false)
     }
-  }, [searchCode, filterActive])
+  }, [searchCode, searchName, filterActive])
 
   useEffect(() => {
     if (status === 'loading') return
@@ -82,6 +85,32 @@ export default function VouchersPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
+      // Validate form data
+      if (!formData.code.trim()) {
+        alert('Kode voucher harus diisi')
+        return
+      }
+      if (!formData.name.trim()) {
+        alert('Nama voucher harus diisi')
+        return
+      }
+      if (formData.value === undefined || formData.value < 0) {
+        alert('Nilai voucher harus diisi dengan nilai yang valid')
+        return
+      }
+      if (!formData.startDate) {
+        alert('Tanggal mulai harus diisi')
+        return
+      }
+      if (!formData.endDate) {
+        alert('Tanggal berakhir harus diisi')
+        return
+      }
+      if (new Date(formData.startDate) > new Date(formData.endDate)) {
+        alert('Tanggal mulai tidak boleh lebih besar dari tanggal berakhir')
+        return
+      }
+
       const url = editingVoucher ? `/api/vouchers/${editingVoucher.id}` : '/api/vouchers'
       const method = editingVoucher ? 'PUT' : 'POST'
       
@@ -92,6 +121,9 @@ export default function VouchersPage() {
         },
         body: JSON.stringify({
           ...formData,
+          code: formData.code.toUpperCase().trim(),
+          name: formData.name.trim(),
+          description: formData.description.trim(),
           value: Number(formData.value),
           minPurchase: formData.minPurchase ? Number(formData.minPurchase) : null,
           maxDiscount: formData.maxDiscount ? Number(formData.maxDiscount) : null,
@@ -201,7 +233,9 @@ export default function VouchersPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div>
+      <Navbar />
+      <div className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-4">
           <button
@@ -223,7 +257,7 @@ export default function VouchersPage() {
 
       {/* Search and Filter */}
       <div className="bg-white p-4 rounded-lg shadow-md mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Cari Kode Voucher
@@ -234,6 +268,18 @@ export default function VouchersPage() {
               onChange={(e) => setSearchCode(e.target.value)}
               className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="Masukkan kode voucher"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Cari Nama Voucher
+            </label>
+            <input
+              type="text"
+              value={searchName}
+              onChange={(e) => setSearchName(e.target.value)}
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="Masukkan nama voucher"
             />
           </div>
           <div>
@@ -451,6 +497,27 @@ export default function VouchersPage() {
                     <option value="FIXED_AMOUNT">Nominal Tetap</option>
                     <option value="FREE_SHIPPING">Gratis Ongkir</option>
                   </select>
+                  <div className="mt-2 p-3 bg-purple-50 rounded-lg text-sm text-purple-700">
+                    {formData.type === 'PERCENTAGE' && (
+                      <div>
+                        <p className="font-medium">Voucher Persentase</p>
+                        <p>Memberikan diskon berdasarkan persentase dari total belanja. Contoh: diskon 10% dari total belanja.</p>
+                        <p className="mt-1">Anda dapat mengatur nilai maksimum diskon untuk membatasi jumlah diskon.</p>
+                      </div>
+                    )}
+                    {formData.type === 'FIXED_AMOUNT' && (
+                      <div>
+                        <p className="font-medium">Voucher Nominal Tetap</p>
+                        <p>Memberikan diskon dengan nilai tetap. Contoh: diskon Rp 50.000 dari total belanja.</p>
+                      </div>
+                    )}
+                    {formData.type === 'FREE_SHIPPING' && (
+                      <div>
+                        <p className="font-medium">Voucher Gratis Ongkir</p>
+                        <p>Menghapus biaya pengiriman dari total belanja.</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -603,6 +670,7 @@ export default function VouchersPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }

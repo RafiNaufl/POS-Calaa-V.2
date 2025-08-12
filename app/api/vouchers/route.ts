@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const code = searchParams.get('code')
     const active = searchParams.get('active')
+    const name = searchParams.get('name')
 
     let whereClause: any = {}
     
@@ -23,20 +24,49 @@ export async function GET(request: NextRequest) {
       }
     }
     
+    if (name) {
+      whereClause.name = {
+        contains: name,
+        mode: 'insensitive'
+      }
+    }
+    
     if (active !== null) {
       whereClause.isActive = active === 'true'
     }
 
+    // Check if user is admin or manager to see all details
+    const isAdminOrManager = session.user.role === 'ADMIN' || session.user.role === 'MANAGER'
+
     const vouchers = await prisma.voucher.findMany({
       where: whereClause,
-      include: {
-        transactions: {
-          include: {
-            transaction: true,
-            user: true,
-            member: true
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        description: true,
+        type: true,
+        value: true,
+        minPurchase: true,
+        maxDiscount: true,
+        usageLimit: true,
+        usageCount: true,
+        perUserLimit: true,
+        startDate: true,
+        endDate: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        // Only include transactions data for admin/manager users
+        ...(isAdminOrManager && {
+          transactions: {
+            include: {
+              transaction: true,
+              user: true,
+              member: true
+            }
           }
-        }
+        })
       },
       orderBy: {
         createdAt: 'desc'
@@ -76,7 +106,7 @@ export async function POST(request: NextRequest) {
     } = body
 
     // Validate required fields
-    if (!code || !name || !type || !value || !startDate || !endDate) {
+    if (!code || !name || !type || value === undefined || !startDate || !endDate) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -101,7 +131,11 @@ export async function POST(request: NextRequest) {
 
     // Check if voucher code already exists
     const existingVoucher = await prisma.voucher.findUnique({
-      where: { code }
+      where: { code },
+      select: {
+        id: true,
+        code: true
+      }
     })
 
     if (existingVoucher) {
@@ -111,19 +145,38 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Create voucher - ensure we only use fields that exist in the database
     const voucher = await prisma.voucher.create({
       data: {
-        code,
+        code: code.toUpperCase(),
         name,
         description,
         type,
         value,
-        minPurchase,
-        maxDiscount,
-        usageLimit,
-        perUserLimit,
+        minPurchase: minPurchase ? Number(minPurchase) : null,
+        maxDiscount: maxDiscount ? Number(maxDiscount) : null,
+        usageLimit: usageLimit ? Number(usageLimit) : null,
+        perUserLimit: perUserLimit ? Number(perUserLimit) : null,
         startDate: new Date(startDate),
         endDate: new Date(endDate)
+      },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        description: true,
+        type: true,
+        value: true,
+        minPurchase: true,
+        maxDiscount: true,
+        usageLimit: true,
+        usageCount: true,
+        perUserLimit: true,
+        startDate: true,
+        endDate: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true
       }
     })
 

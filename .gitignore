@@ -103,3 +103,4 @@ prisma/dev.db*
 ehthumbs.db
 Thumbs.db
 .vercel
+.env*.local

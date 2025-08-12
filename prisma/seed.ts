@@ -89,7 +89,9 @@ async function createUsers() {
           price: 150000,
           stock: 50,
           categoryId: categories[0].id,
-          image: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=400&h=300&fit=crop&crop=center',
+          color: 'Putih',
+          size: 'L'
         }
       }),
       prisma.product.create({
@@ -99,7 +101,9 @@ async function createUsers() {
           price: 80000,
           stock: 100,
           categoryId: categories[0].id,
-          image: 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=400&h=300&fit=crop&crop=center',
+          color: 'Hitam',
+          size: 'M'
         }
       }),
       prisma.product.create({
@@ -109,7 +113,9 @@ async function createUsers() {
           price: 250000,
           stock: 30,
           categoryId: categories[1].id,
-          image: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=400&h=300&fit=crop&crop=center',
+          color: 'Biru',
+          size: '32'
         }
       }),
       prisma.product.create({
@@ -119,7 +125,9 @@ async function createUsers() {
           price: 180000,
           stock: 25,
           categoryId: categories[1].id,
-          image: 'https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?w=400&h=300&fit=crop&crop=center',
+          color: 'Hitam',
+          size: 'M'
         }
       }),
       prisma.product.create({
@@ -129,7 +137,9 @@ async function createUsers() {
           price: 75000,
           stock: 40,
           categoryId: categories[2].id,
-          image: 'https://images.unsplash.com/photo-1588850561407-ed78c282e89b?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1588850561407-ed78c282e89b?w=400&h=300&fit=crop&crop=center',
+          color: 'Merah',
+          size: 'All Size'
         }
       }),
       // Atasan tambahan
@@ -140,7 +150,9 @@ async function createUsers() {
           price: 120000,
           stock: 35,
           categoryId: categories[0].id,
-          image: 'https://images.unsplash.com/photo-1564257631407-4deb1f99d992?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1564257631407-4deb1f99d992?w=400&h=300&fit=crop&crop=center',
+          color: 'Multi',
+          size: 'S'
         }
       }),
       prisma.product.create({
@@ -150,7 +162,9 @@ async function createUsers() {
           price: 185000,
           stock: 20,
           categoryId: categories[0].id,
-          image: 'https://images.unsplash.com/photo-1589310243389-96a5483213a8?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1589310243389-96a5483213a8?w=400&h=300&fit=crop&crop=center',
+          color: 'Multi',
+          size: 'L'
         }
       }),
       prisma.product.create({
@@ -160,7 +174,9 @@ async function createUsers() {
           price: 220000,
           stock: 18,
           categoryId: categories[0].id,
-          image: 'https://images.unsplash.com/photo-1576871337622-98d48d1cf531?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1576871337622-98d48d1cf531?w=400&h=300&fit=crop&crop=center',
+          color: 'Abu-abu',
+          size: 'M'
         }
       }),
       prisma.product.create({
@@ -170,7 +186,9 @@ async function createUsers() {
           price: 200000,
           stock: 22,
           categoryId: categories[0].id,
-          image: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=400&h=300&fit=crop&crop=center',
+          color: 'Hitam',
+          size: 'L'
         }
       }),
       // Bawahan tambahan
@@ -181,7 +199,9 @@ async function createUsers() {
           price: 175000,
           stock: 40,
           categoryId: categories[1].id,
-          image: 'https://images.unsplash.com/photo-1473966968600-fa801b869a1a?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1473966968600-fa801b869a1a?w=400&h=300&fit=crop&crop=center',
+          color: 'Khaki',
+          size: '32'
         }
       }),
       prisma.product.create({
@@ -191,7 +211,9 @@ async function createUsers() {
           price: 150000,
           stock: 25,
           categoryId: categories[1].id,
-          image: 'https://images.unsplash.com/photo-1577900232427-18219b8349fd?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1577900232427-18219b8349fd?w=400&h=300&fit=crop&crop=center',
+          color: 'Hitam',
+          size: 'M'
         }
       }),
       prisma.product.create({
@@ -201,7 +223,9 @@ async function createUsers() {
           price: 165000,
           stock: 30,
           categoryId: categories[1].id,
-          image: 'https://images.unsplash.com/photo-1509551388413-e18d0ac5d495?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1509551388413-e18d0ac5d495?w=400&h=300&fit=crop&crop=center',
+          color: 'Coklat',
+          size: 'M'
         }
       }),
       prisma.product.create({
@@ -211,7 +235,9 @@ async function createUsers() {
           price: 120000,
           stock: 50,
           categoryId: categories[1].id,
-          image: 'https://images.unsplash.com/photo-1565084888279-aca607ecce0c?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1565084888279-aca607ecce0c?w=400&h=300&fit=crop&crop=center',
+          color: 'Navy',
+          size: '30'
         }
       }),
       // Aksesoris tambahan
@@ -222,7 +248,9 @@ async function createUsers() {
           price: 85000,
           stock: 30,
           categoryId: categories[2].id,
-          image: 'https://images.unsplash.com/photo-1520903920243-00d872a2d1c9?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1520903920243-00d872a2d1c9?w=400&h=300&fit=crop&crop=center',
+          color: 'Merah',
+          size: 'All Size'
         }
       }),
       prisma.product.create({
@@ -232,7 +260,9 @@ async function createUsers() {
           price: 95000,
           stock: 40,
           categoryId: categories[2].id,
-          image: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=400&h=300&fit=crop&crop=center',
+          color: 'Coklat',
+          size: 'All Size'
         }
       }),
       prisma.product.create({
@@ -242,7 +272,9 @@ async function createUsers() {
           price: 120000,
           stock: 20,
           categoryId: categories[2].id,
-          image: 'https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=400&h=300&fit=crop&crop=center',
+          color: 'Hitam',
+          size: 'All Size'
         }
       }),
       // Sepatu
@@ -253,7 +285,9 @@ async function createUsers() {
           price: 350000,
           stock: 25,
           categoryId: categories[3].id,
-          image: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=400&h=300&fit=crop&crop=center',
+          color: 'Putih',
+          size: '42'
         }
       }),
       prisma.product.create({
@@ -263,7 +297,9 @@ async function createUsers() {
           price: 280000,
           stock: 20,
           categoryId: categories[3].id,
-          image: 'https://images.unsplash.com/photo-1614252235316-8c857d38b5f4?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1614252235316-8c857d38b5f4?w=400&h=300&fit=crop&crop=center',
+          color: 'Hitam',
+          size: '43'
         }
       }),
       prisma.product.create({
@@ -273,7 +309,9 @@ async function createUsers() {
           price: 200000,
           stock: 35,
           categoryId: categories[3].id,
-          image: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=400&h=300&fit=crop&crop=center'
+          image: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=400&h=300&fit=crop&crop=center',
+          color: 'Hitam',
+          size: '38'
         }
       })
     ])
@@ -300,7 +338,9 @@ async function addNewProducts() {
         price: 225000,
         stock: 15,
         categoryName: 'Atasan',
-        image: 'https://images.unsplash.com/photo-1598033129183-c4f50c736f10?w=400&h=300&fit=crop&crop=center'
+        image: 'https://images.unsplash.com/photo-1598033129183-c4f50c736f10?w=400&h=300&fit=crop&crop=center',
+        color: 'Biru',
+        size: 'L'
       },
       {
         name: 'Blouse Satin',
@@ -308,7 +348,9 @@ async function addNewProducts() {
         price: 180000,
         stock: 20,
         categoryName: 'Atasan',
-        image: 'https://images.unsplash.com/photo-1551489186-cf8726f514f8?w=400&h=300&fit=crop&crop=center'
+        image: 'https://images.unsplash.com/photo-1551489186-cf8726f514f8?w=400&h=300&fit=crop&crop=center',
+        color: 'Putih',
+        size: 'M'
       },
       {
         name: 'Kaos Polo',
@@ -316,7 +358,9 @@ async function addNewProducts() {
         price: 120000,
         stock: 18,
         categoryName: 'Atasan',
-        image: 'https://images.unsplash.com/photo-1586363104862-3a5e2ab60d99?w=400&h=300&fit=crop&crop=center'
+        image: 'https://images.unsplash.com/photo-1586363104862-3a5e2ab60d99?w=400&h=300&fit=crop&crop=center',
+        color: 'Navy',
+        size: 'XL'
       },
       {
         name: 'Cardigan Rajut',
@@ -324,7 +368,9 @@ async function addNewProducts() {
         price: 235000,
         stock: 12,
         categoryName: 'Atasan',
-        image: 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=400&h=300&fit=crop&crop=center'
+        image: 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=400&h=300&fit=crop&crop=center',
+        color: 'Cream',
+        size: 'M'
       },
       {
         name: 'Celana Cargo',
@@ -332,7 +378,9 @@ async function addNewProducts() {
         price: 210000,
         stock: 40,
         categoryName: 'Bawahan',
-        image: 'https://images.unsplash.com/photo-1517438476312-10d79c077509?w=400&h=300&fit=crop&crop=center'
+        image: 'https://images.unsplash.com/photo-1517438476312-10d79c077509?w=400&h=300&fit=crop&crop=center',
+        color: 'Hijau',
+        size: '32'
       },
       {
         name: 'Rok Panjang',
@@ -340,7 +388,9 @@ async function addNewProducts() {
         price: 175000,
         stock: 25,
         categoryName: 'Bawahan',
-        image: 'https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?w=400&h=300&fit=crop&crop=center'
+        image: 'https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?w=400&h=300&fit=crop&crop=center',
+        color: 'Hitam',
+        size: 'M'
       },
       {
         name: 'Celana Jogger',
@@ -348,7 +398,9 @@ async function addNewProducts() {
         price: 160000,
         stock: 30,
         categoryName: 'Bawahan',
-        image: 'https://images.unsplash.com/photo-1552902865-b72c031ac5ea?w=400&h=300&fit=crop&crop=center'
+        image: 'https://images.unsplash.com/photo-1552902865-b72c031ac5ea?w=400&h=300&fit=crop&crop=center',
+        color: 'Abu-abu',
+        size: 'L'
       },
       {
         name: 'Rok Mini',
@@ -356,7 +408,9 @@ async function addNewProducts() {
         price: 145000,
         stock: 50,
         categoryName: 'Bawahan',
-        image: 'https://images.unsplash.com/photo-1592301933927-35b597393c0a?w=400&h=300&fit=crop&crop=center'
+        image: 'https://images.unsplash.com/photo-1592301933927-35b597393c0a?w=400&h=300&fit=crop&crop=center',
+        color: 'Biru',
+        size: 'S'
       },
       {
         name: 'Dompet Kulit',
@@ -364,7 +418,9 @@ async function addNewProducts() {
         price: 185000,
         stock: 30,
         categoryName: 'Aksesoris',
-        image: 'https://images.unsplash.com/photo-1627123424574-724758594e93?w=400&h=300&fit=crop&crop=center'
+        image: 'https://images.unsplash.com/photo-1627123424574-724758594e93?w=400&h=300&fit=crop&crop=center',
+        color: 'Coklat',
+        size: 'All Size'
       },
       {
         name: 'Tas Selempang',
@@ -372,7 +428,9 @@ async function addNewProducts() {
         price: 165000,
         stock: 40,
         categoryName: 'Aksesoris',
-        image: 'https://images.unsplash.com/photo-1590874103328-eac38a683ce7?w=400&h=300&fit=crop&crop=center'
+        image: 'https://images.unsplash.com/photo-1590874103328-eac38a683ce7?w=400&h=300&fit=crop&crop=center',
+        color: 'Hitam',
+        size: 'All Size'
       },
       {
         name: 'Jam Tangan',
@@ -380,7 +438,9 @@ async function addNewProducts() {
         price: 250000,
         stock: 20,
         categoryName: 'Aksesoris',
-        image: 'https://images.unsplash.com/photo-1524805444758-089113d48a6d?w=400&h=300&fit=crop&crop=center'
+        image: 'https://images.unsplash.com/photo-1524805444758-089113d48a6d?w=400&h=300&fit=crop&crop=center',
+        color: 'Silver',
+        size: 'All Size'
       },
       {
         name: 'Sandal Jepit',
@@ -388,7 +448,9 @@ async function addNewProducts() {
         price: 75000,
         stock: 25,
         categoryName: 'Sepatu',
-        image: 'https://images.unsplash.com/photo-1603487742131-4160ec999306?w=400&h=300&fit=crop&crop=center'
+        image: 'https://images.unsplash.com/photo-1603487742131-4160ec999306?w=400&h=300&fit=crop&crop=center',
+        color: 'Hitam',
+        size: '40'
       },
       {
         name: 'Boots Kulit',
@@ -396,7 +458,9 @@ async function addNewProducts() {
         price: 450000,
         stock: 20,
         categoryName: 'Sepatu',
-        image: 'https://images.unsplash.com/photo-1638247025967-b4e38f787b76?w=400&h=300&fit=crop&crop=center'
+        image: 'https://images.unsplash.com/photo-1638247025967-b4e38f787b76?w=400&h=300&fit=crop&crop=center',
+        color: 'Coklat',
+        size: '42'
       },
       {
         name: 'Sepatu Wedges',
@@ -404,7 +468,9 @@ async function addNewProducts() {
         price: 320000,
         stock: 35,
         categoryName: 'Sepatu',
-        image: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=400&h=300&fit=crop&crop=center'
+        image: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=400&h=300&fit=crop&crop=center',
+        color: 'Hitam',
+        size: '38'
       }
     ]
 
@@ -424,7 +490,9 @@ async function addNewProducts() {
               price: productData.price,
               stock: productData.stock,
               categoryId: category.id,
-              image: productData.image
+              image: productData.image,
+              color: productData.color || 'Default',
+              size: productData.size || 'All Size'
             }
           })
           console.log(`Added new product: ${productData.name}`)
