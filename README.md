@@ -1,5 +1,14 @@
 # POS Fashion App
 
+## Fitur Utama
+
+- Manajemen produk dan kategori
+- Sistem kasir dengan antarmuka yang intuitif
+- Manajemen pelanggan dan sistem poin
+- Voucher dan promosi
+- Laporan penjualan dan analitik
+- Integrasi pembayaran multi-metode (Tunai, Kartu)
+
 ## Deployment Guide for Vercel
 
 ### Database Configuration
@@ -44,6 +53,8 @@ The application is experiencing a `PrismaClientInitializationError` because it's
    vercel login
    vercel
    ```
+
+
 
 ### Running Migrations and Seeding the Database
 

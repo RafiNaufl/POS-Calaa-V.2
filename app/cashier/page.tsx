@@ -5,8 +5,11 @@ import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
+// Payment methods are limited to CASH and CARD only
 import Navbar from '@/components/Navbar'
-import DOKUPaymentModal from '@/components/DOKUPaymentModal'
+
+import ProductImage from '@/components/ProductImage'
+// DOKU Payment Modal removed
 import useSWR from 'swr'
 import {
   ShoppingCartIcon,
@@ -18,11 +21,16 @@ import {
   CreditCardIcon,
   BanknotesIcon,
   XCircleIcon,
+  XMarkIcon,
   DevicePhoneMobileIcon,
   ChevronUpIcon,
   ChevronDownIcon,
   InformationCircleIcon,
   CheckCircleIcon,
+  BuildingLibraryIcon,
+  QuestionMarkCircleIcon,
+  DocumentDuplicateIcon,
+  ChatBubbleLeftRightIcon
 } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 
@@ -45,6 +53,18 @@ const AutomaticIcon = ({ className }: { className?: string }) => (
 );
 
 // Add custom CSS animations
+// Format currency function
+const formatCurrency = (amount: number) => {
+  // Handle NaN, null, undefined, or invalid numbers
+  if (isNaN(amount) || amount === null || amount === undefined) {
+    amount = 0
+  }
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+  }).format(amount)
+}
+
 if (typeof document !== 'undefined') {
   const styleSheet = document.createElement('style')
   styleSheet.textContent = `
@@ -165,14 +185,19 @@ export default function CashierPage() {
   const [member, setMember] = useState<Member | null>(null)
   const [pointsToUse, setPointsToUse] = useState(0)
   const [isSearchingMember, setIsSearchingMember] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'DIGITAL_WALLET' | 'E_WALLET' | 'DOKU'>('CASH')
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'DIGITAL_WALLET' | 'BANK_TRANSFER' | 'MIDTRANS'>('CASH')
+  // Payment methods are limited to CASH and CARD only
+  const [cashAmount, setCashAmount] = useState<number>(0)
+  const [changeAmount, setChangeAmount] = useState<number>(0)
   const [loading, setLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState('')
   const [showTransactionModal, setShowTransactionModal] = useState(false)
   const [completedTransaction, setCompletedTransaction] = useState<any>(null)
-  const [showDOKUModal, setShowDOKUModal] = useState(false)
-  const [pendingTransaction, setPendingTransaction] = useState<any>(null)
+  const [showBankTransferModal, setShowBankTransferModal] = useState(false)
+  const [bankTransferTransaction, setBankTransferTransaction] = useState<any>(null)
+  // DOKU Modal state removed
+  // Pending transaction state removed
   const [voucherCode, setVoucherCode] = useState('')
   const [appliedVoucher, setAppliedVoucher] = useState<Voucher | null>(null)
   const [voucherDiscount, setVoucherDiscount] = useState(0)
@@ -183,6 +208,8 @@ export default function CashierPage() {
   const [availablePromotions, setAvailablePromotions] = useState<Promotion[]>([])
   const [showVoucherList, setShowVoucherList] = useState(false)
   const [showPromotionList, setShowPromotionList] = useState(false)
+  const [showCashPaymentModal, setShowCashPaymentModal] = useState(false)
+
 
   // Fetch data using SWR
   const fetcher = (url: string) => fetch(url).then(res => {
@@ -200,53 +227,44 @@ export default function CashierPage() {
   
   const { data: promotionsData, error: promotionsError } = useSWR('/api/promotions?active=true', fetcher)
 
-  // Handle payment success from Xendit redirect
+  // Handle payment callback from Midtrans redirect
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
     const paymentStatus = urlParams.get('payment')
     const transactionId = urlParams.get('transaction_id')
     
-    if (paymentStatus === 'success' && transactionId) {
-      console.log('Payment success detected in URL, transaction ID:', transactionId)
+    if (paymentStatus && transactionId) {
+      console.log('Payment callback detected:', paymentStatus, 'transaction ID:', transactionId)
       
-      // Update transaction status to PAID
-      fetch('/api/transactions', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          id: transactionId,
-          paymentStatus: 'PAID',
-          status: 'COMPLETED'
-        })
-      })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error('Failed to update transaction status')
-        }
-        return response.json()
-      })
-      .then(data => {
-        console.log('Transaction status updated:', data)
-        // Clear URL parameters
-        window.history.replaceState({}, document.title, window.location.pathname)
-        
-        // Handle successful payment
-        handleDOKUPaymentSuccess({ id: transactionId })
-      })
-      .catch(error => {
-        console.error('Error updating transaction status:', error)
-        toast.error('Terjadi kesalahan saat memperbarui status transaksi')
-        // Still try to handle the payment success even if update fails
-        window.history.replaceState({}, document.title, window.location.pathname)
-        handleDOKUPaymentSuccess({ id: transactionId })
-      })
-    } else if (paymentStatus === 'failed' || paymentStatus === 'cancelled') {
-      // Handle failed or cancelled payment
-      toast.error('Pembayaran tidak berhasil. Silakan coba lagi.')
-      // Clear URL parameters
+      // Clear URL parameters first
       window.history.replaceState({}, document.title, window.location.pathname)
+      
+      if (paymentStatus === 'success') {
+        // Payment successful - webhook should have already updated the status
+        // Just show success message and refresh data
+        toast.success('Pembayaran berhasil! Transaksi telah dicatat.')
+        
+        // Clear cart and reset form
+        setCart([])
+        setCustomerName('')
+        setCustomerPhone('')
+        setCustomerEmail('')
+        setMember(null)
+        setPointsToUse(0)
+        setAppliedVoucher(null)
+        setVoucherCode('')
+        
+        // Refresh transactions data if available
+        setTimeout(() => {
+          window.location.reload()
+        }, 1000)
+      } else if (paymentStatus === 'error' || paymentStatus === 'failed' || paymentStatus === 'cancelled') {
+        toast.error('Pembayaran gagal atau dibatalkan. Silakan coba lagi.')
+      } else if (paymentStatus === 'pending') {
+        toast.loading('Pembayaran sedang diproses. Mohon tunggu konfirmasi.', {
+          duration: 5000
+        })
+      }
     }
   }, [])
 
@@ -509,7 +527,7 @@ export default function CashierPage() {
       } else {
         const error = await response.json()
         if (error.minPurchase) {
-          toast.error(`Minimum pembelian Rp ${formatCurrency(error.minPurchase)}`)
+          toast.error(`Minimum pembelian Rp ${new Intl.NumberFormat('id-ID').format(error.minPurchase)}`)
         } else {
           toast.error(error.error || 'Voucher tidak valid')
         }
@@ -578,16 +596,14 @@ export default function CashierPage() {
 
   const calculateTotal = () => {
     const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
-    const tax = subtotal * 0.1 // 10% tax
     const pointsDiscount = pointsToUse * 1000 // 1 poin = 1000 rupiah
-    const totalBeforeDiscounts = subtotal + tax - pointsDiscount
+    const totalBeforeDiscounts = subtotal - pointsDiscount
     const totalVoucherDiscount = voucherDiscount
     const totalPromotionDiscount = promotionDiscount
     const total = Math.max(0, totalBeforeDiscounts - totalVoucherDiscount - totalPromotionDiscount)
     const pointsEarned = member ? Math.floor(total / 10000) : 0
     return { 
       subtotal, 
-      tax, 
       total, 
       pointsDiscount, 
       pointsEarned, 
@@ -596,11 +612,74 @@ export default function CashierPage() {
     }
   }
 
+  // Function to print bank transfer instructions
+  const printBankTransferInstructions = () => {
+    if (!bankTransferTransaction) return;
+    
+    const instructionsContent = document.createElement('div');
+    instructionsContent.innerHTML = `
+      <div style="font-family: 'Arial', sans-serif; width: 400px; padding: 20px;">
+        <div style="text-align: center; margin-bottom: 20px;">
+          <h2 style="margin: 0;">WEAR CALAA</h2>
+          <p style="margin: 5px 0;">Jl. Contoh No. 123, Jakarta</p>
+          <p style="margin: 5px 0;">Telp: (021) 123-4567</p>
+          <h3 style="margin: 15px 0 5px;">Instruksi Transfer Bank</h3>
+        </div>
+        
+        <div style="border: 1px solid #000; padding: 10px; margin-bottom: 20px;">
+          <h4 style="margin: 0 0 10px;">Detail Transaksi</h4>
+          <p style="margin: 5px 0;">ID Transaksi: ${bankTransferTransaction.id}</p>
+          <p style="margin: 5px 0;">Tanggal: ${new Date(bankTransferTransaction.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+          <p style="margin: 5px 0;">Total Pembayaran: ${formatCurrency(bankTransferTransaction.total)}</p>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+          <h4 style="margin: 0 0 10px;">Rekening Tujuan</h4>
+          <div style="border: 1px solid #000; padding: 10px; margin-bottom: 10px;">
+            <p style="margin: 2px 0; font-weight: bold;">Bank BCA</p>
+            <p style="margin: 2px 0;">Nama: WEAR CALAA</p>
+            <p style="margin: 2px 0;">No. Rekening: 1234567890</p>
+          </div>
+          <div style="border: 1px solid #000; padding: 10px;">
+            <p style="margin: 2px 0; font-weight: bold;">Bank Mandiri</p>
+            <p style="margin: 2px 0;">Nama: WEAR CALAA</p>
+            <p style="margin: 2px 0;">No. Rekening: 0987654321</p>
+          </div>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+          <h4 style="margin: 0 0 10px;">Langkah-langkah Pembayaran</h4>
+          <ol style="margin: 0; padding-left: 20px;">
+            <li style="margin-bottom: 5px;">Transfer tepat sejumlah ${formatCurrency(bankTransferTransaction.total)} ke salah satu rekening di atas</li>
+            <li style="margin-bottom: 5px;">Simpan bukti transfer</li>
+            <li style="margin-bottom: 5px;">Tunjukkan bukti transfer kepada kasir atau admin untuk konfirmasi pembayaran</li>
+            <li style="margin-bottom: 5px;">Pembayaran akan diverifikasi dan status transaksi akan diperbarui</li>
+          </ol>
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px; border-top: 1px dashed #000; padding-top: 10px;">
+          <p style="margin: 5px 0;">Terima kasih atas kunjungan Anda!</p>
+          <p style="margin: 5px 0;">Silakan datang kembali</p>
+        </div>
+      </div>
+    `;
+    
+    const printWindow = window.open('', '', 'height=600,width=400');
+    printWindow?.document.write('<html><head><title>Instruksi Transfer Bank</title>');
+    printWindow?.document.write('</head><body>');
+    printWindow?.document.write(instructionsContent.innerHTML);
+    printWindow?.document.write('</body></html>');
+    printWindow?.document.close();
+    printWindow?.print();
+  };
+
   const processPayment = async () => {
     if (cart.length === 0) {
       toast.error('Keranjang kosong')
       return
     }
+
+    // Validasi sudah dilakukan di modal untuk pembayaran tunai
 
     setIsProcessing(true)
     
@@ -611,10 +690,10 @@ export default function CashierPage() {
           productId: item.id,
           quantity: item.quantity,
           price: item.price,
-          subtotal: item.price * item.quantity
+          subtotal: item.price * item.quantity,
+          name: item.name
         })),
         subtotal: totals.subtotal,
-        tax: totals.tax,
         total: totals.total,
         paymentMethod,
         customerName: customerName || null,
@@ -624,19 +703,81 @@ export default function CashierPage() {
         voucherCode: appliedVoucher?.code || null,
         voucherDiscount: totals.voucherDiscount,
         promoDiscount: totals.promotionDiscount,
-        promotionDiscount: totals.promotionDiscount // Mengirim kedua field untuk kompatibilitas
+        promotionDiscount: totals.promotionDiscount, // Mengirim kedua field untuk kompatibilitas
+        memberId: member?.id || null,
+        // Add cash payment data
+        cashAmount: paymentMethod === 'CASH' ? cashAmount : null,
+        changeAmount: paymentMethod === 'CASH' ? changeAmount : null
       }
       
-      // E-Wallet payments are now handled by DOKU
-      
-      // For DOKU payments, open DOKU modal
-      if (paymentMethod === 'DOKU') {
-        setPendingTransaction(transactionData)
-        setShowDOKUModal(true)
-        setIsProcessing(false)
-        return
+      // Handle Midtrans payment
+      if (paymentMethod === 'MIDTRANS') {
+        try {
+          const orderId = `TXN-${Date.now()}`;
+          
+          // First, create transaction in database with PENDING status
+          const transactionResponse = await fetch('/api/transactions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ...transactionData,
+              id: orderId,
+              paymentStatus: 'PENDING',
+              status: 'PENDING'
+            })
+          });
+
+          if (!transactionResponse.ok) {
+            throw new Error('Failed to create transaction record');
+          }
+
+          const transactionResult = await transactionResponse.json();
+          
+          // Create Midtrans payment token
+          const midtransResponse = await fetch('/api/payments/midtrans/create-token', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              orderId: orderId,
+              amount: totals.total,
+              customerDetails: {
+                first_name: customerName || 'Customer',
+                email: customerEmail || 'customer@example.com',
+                phone: customerPhone || '08123456789'
+              },
+              itemDetails: cart.map(item => ({
+                id: item.id,
+                price: item.price,
+                quantity: item.quantity,
+                name: item.name
+              }))
+            })
+          });
+
+          if (!midtransResponse.ok) {
+            throw new Error('Failed to create Midtrans payment token');
+          }
+
+          const midtransData = await midtransResponse.json();
+          
+          // Redirect to Midtrans payment page
+          if (midtransData.redirect_url) {
+            window.location.href = midtransData.redirect_url;
+            toast.success('Redirecting to Midtrans payment page...');
+            return;
+          }
+        } catch (error) {
+          console.error('Midtrans payment error:', error);
+          toast.error('Failed to process Midtrans payment');
+          return;
+        }
       }
       
+      // Proses pembayaran normal untuk metode lain
       const response = await fetch('/api/transactions', {
         method: 'POST',
         headers: {
@@ -650,10 +791,10 @@ export default function CashierPage() {
         console.error('Transaction error:', errorData)
         throw new Error(errorData.message || 'Failed to process transaction')
       }
-      
+    
       const transaction = await response.json()
-      
-      // Set completed transaction data for modal
+    
+      // Set transaction data for modal
       const transactionWithItems = {
         id: transaction.id,
         items: cart,
@@ -669,14 +810,21 @@ export default function CashierPage() {
         appliedPromotions: appliedPromotions
       }
       
-      setCompletedTransaction(transactionWithItems)
-      setShowTransactionModal(true)
+      // Show appropriate modal based on payment method
+      if (paymentMethod === 'BANK_TRANSFER') {
+        setBankTransferTransaction(transactionWithItems)
+        setShowBankTransferModal(true)
+      } else {
+        setCompletedTransaction(transactionWithItems)
+        setShowTransactionModal(true)
+      }
       
       // Clear cart
       clearCart()
       // SWR will automatically revalidate data
       
       toast.success('Pembayaran berhasil!')
+
     } catch (error) {
       console.error('Payment failed:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -696,132 +844,18 @@ export default function CashierPage() {
     }
   }
 
-  // Xendit payment handlers have been removed as we now use DOKU for all payment types
+  // Payment handler code
 
-  const handleDOKUPaymentSuccess = async (transaction: any) => {
-    console.log('Handling DOKU payment success for transaction ID:', transaction.id)
-    setShowDOKUModal(false)
-    setPendingTransaction(null)
-    setIsProcessing(true)
-    
-    try {
-      // Fetch the complete transaction from database
-      const response = await fetch(`/api/transactions/${transaction.id}`)
-      console.log('Transaction fetch response status:', response.status)
-      
-      if (response.ok) {
-        const completeTransaction = await response.json()
-        console.log('Fetched transaction details:', completeTransaction)
-        
-        // Get transaction items if available, otherwise use cart
-        let transactionItems = cart
-        if (completeTransaction.items && completeTransaction.items.length > 0) {
-          // If the API returns items with product details
-          transactionItems = completeTransaction.items.map((item: any) => ({
-            ...item.product,
-            quantity: item.quantity,
-            price: item.price
-          }))
-        } else if (completeTransaction.TransactionItem && completeTransaction.TransactionItem.length > 0) {
-          // Alternative format that might be returned
-          transactionItems = completeTransaction.TransactionItem.map((item: any) => ({
-            ...item.product,
-            quantity: item.quantity,
-            price: item.price
-          }))
-        }
-        
-        // Set completed transaction data for modal
-        const transactionWithItems = {
-          ...completeTransaction,
-          items: transactionItems,
-          appliedPromotions: appliedPromotions,
-          paymentMethod: completeTransaction.paymentMethod || 'DOKU',
-          customerName: completeTransaction.customerName || customerName,
-          createdAt: completeTransaction.createdAt || new Date(),
-          total: completeTransaction.total || 0
-        }
-        
-        setCompletedTransaction(transactionWithItems)
-        setShowTransactionModal(true)
-      } else {
-        console.warn('Failed to fetch transaction details, using fallback')
-        // Fallback to original behavior if fetch fails
-        const transactionWithItems = {
-          id: transaction.id,
-          items: cart,
-          total: transaction.total || calculateTotal().total,
-          paymentMethod: 'DOKU',
-          customerName: customerName || undefined,
-          createdAt: new Date(),
-          pointsUsed: pointsToUse,
-          pointsEarned: transaction.pointsEarned || 0,
-          voucherCode: appliedVoucher?.code || null,
-          voucherDiscount: transaction.voucherDiscount || 0,
-          promotionDiscount: transaction.promotionDiscount || 0,
-          appliedPromotions: appliedPromotions
-        }
-        
-        setCompletedTransaction(transactionWithItems)
-        setShowTransactionModal(true)
-      }
-    } catch (error) {
-      console.error('Error fetching transaction:', error)
-      // Fallback to original behavior
-      const transactionWithItems = {
-        id: transaction.id,
-        items: cart,
-        total: transaction.total || calculateTotal().total,
-        paymentMethod: 'DOKU',
-        customerName: customerName || undefined,
-        createdAt: new Date(),
-        pointsUsed: pointsToUse,
-        pointsEarned: transaction.pointsEarned || 0,
-        voucherCode: appliedVoucher?.code || null,
-        voucherDiscount: transaction.voucherDiscount || 0,
-        promotionDiscount: transaction.promotionDiscount || 0,
-        appliedPromotions: appliedPromotions
-      }
-      
-      setCompletedTransaction(transactionWithItems)
-      setShowTransactionModal(true)
-    } finally {
-      setIsProcessing(false)
-    }
-    
-    // Clear cart
-    clearCart()
-    // SWR will automatically revalidate data
-    
-    toast.success('Pembayaran DOKU berhasil!')
-  }
-
-  const handleDOKUPaymentError = (error: string) => {
-    console.error('DOKU payment error:', error)
-    setShowDOKUModal(false)
-    setPendingTransaction(null)
-    setIsProcessing(false)
-    
-    // Tampilkan pesan error yang lebih spesifik
-    if (error.includes('Sesi pengguna tidak valid') || error.includes('User not found in database')) {
-      toast.error('Sesi pengguna tidak valid. Silakan login ulang.')
-      // Redirect ke halaman login setelah beberapa detik
-      setTimeout(() => {
-        window.location.href = '/login'
-      }, 3000)
-    } else {
-      toast.error('Pembayaran DOKU gagal: ' + error)
-    }
-  }
+  // DOKU payment handlers removed
 
   const printReceipt = () => {
-    const { subtotal, tax, total, voucherDiscount, promotionDiscount } = calculateTotal()
+    const { subtotal, total, voucherDiscount, promotionDiscount } = calculateTotal()
     const pointsUsed = completedTransaction?.pointsUsed ?? 0
     const pointsEarned = completedTransaction?.pointsEarned ?? 0
     const pointDiscount = pointsUsed * 1000
     
     const receiptContent = `
-      ===== POS RESTAURANT =====
+      ===== Wear Calaa =====
       Tanggal: ${new Date().toLocaleDateString('id-ID')}
       Waktu: ${new Date().toLocaleTimeString('id-ID')}
       Kasir: ${session?.user?.name || 'Admin'}
@@ -838,7 +872,6 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
       
       ===== TOTAL =====
       Subtotal: ${formatCurrency(subtotal)}
-      Pajak (10%): ${formatCurrency(tax)}
       ${pointsUsed > 0 ? `Diskon Poin (${pointsUsed} poin): -${formatCurrency(pointDiscount)}` : ''}
       ${voucherDiscount > 0 ? `Diskon Voucher (${appliedVoucher?.code}): -${formatCurrency(voucherDiscount)}` : ''}
       ${promotionDiscount > 0 ? `Diskon Promosi: -${formatCurrency(promotionDiscount)}` : ''}
@@ -856,6 +889,8 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
     toast.success('Struk dicetak')
   }
 
+
+
   const formatCurrency = (amount: number) => {
     // Handle NaN, null, undefined, or invalid numbers
     if (isNaN(amount) || amount === null || amount === undefined) {
@@ -867,7 +902,7 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
     }).format(amount)
   }
 
-  const { subtotal, tax, total } = calculateTotal()
+  const { subtotal, total } = calculateTotal()
 
   if (!session) {
     return (
@@ -1337,25 +1372,14 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                     >
                       {/* Product Image */}
                       <div className="aspect-square bg-gray-50 rounded-lg mb-3 flex items-center justify-center overflow-hidden relative">
-                        {product.image ? (
-                          <Image
-                            src={product.image}
-                            alt={product.name}
-                            width={200}
-                            height={200}
-                            className="w-full h-full object-cover rounded-lg group-hover:scale-105 transition-transform duration-200"
-                            unoptimized={true}
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement;
-                              target.style.display = 'none';
-                              target.nextElementSibling?.classList.remove('hidden');
-                            }}
-                          />
-                        ) : null}
-                        <div className={`flex flex-col items-center justify-center text-gray-400 ${product.image ? 'hidden' : ''}`}>
-                          <div className="text-2xl mb-1">📦</div>
-                          <span className="text-xs">No Image</span>
-                        </div>
+                        <ProductImage
+                          productId={product.id}
+                          productName={product.name}
+                          image={product.image}
+                          width={200}
+                          height={200}
+                          className="w-full h-full object-cover rounded-lg group-hover:scale-105 transition-transform duration-200"
+                        />
                         
                         {/* Stock Status Badge */}
                         {product.stock <= 5 && (
@@ -1706,7 +1730,10 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                   <div className="space-y-2">
                     {[
                       { value: 'CASH', label: 'Tunai', icon: BanknotesIcon },
-                      { value: 'DOKU', label: 'DOKU Payment', icon: DevicePhoneMobileIcon },
+                      { value: 'CARD', label: 'Kartu Debit/Kredit', icon: CreditCardIcon },
+                      { value: 'DIGITAL_WALLET', label: 'Dompet Digital', icon: DevicePhoneMobileIcon },
+                      { value: 'BANK_TRANSFER', label: 'Transfer Bank', icon: BuildingLibraryIcon },
+                      { value: 'MIDTRANS', label: 'Midtrans Payment Gateway', icon: CreditCardIcon }
                     ].map(method => {
                       const IconComponent = method.icon
                       return (
@@ -1716,7 +1743,15 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                             name="paymentMethod"
                             value={method.value}
                             checked={paymentMethod === method.value}
-                            onChange={(e) => setPaymentMethod(e.target.value as any)}
+                            onChange={(e) => {
+                              const selectedMethod = e.target.value as any
+                              setPaymentMethod(selectedMethod)
+                              // Reset cash amount when changing payment method from CASH
+                              if (paymentMethod === 'CASH' && selectedMethod !== 'CASH') {
+                                setCashAmount(0)
+                                setChangeAmount(0)
+                              }
+                            }}
                             className="mr-3 text-blue-500"
                           />
                           <IconComponent className="h-4 w-4 mr-2 text-gray-600" />
@@ -1725,6 +1760,7 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                       )
                     })}
                   </div>
+
                 </div>
               )}
 
@@ -1736,10 +1772,7 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                       <span>Subtotal:</span>
                       <span>{formatCurrency(subtotal)}</span>
                     </div>
-                    <div className="flex justify-between text-gray-600">
-                      <span>Pajak (10%):</span>
-                      <span>{formatCurrency(tax)}</span>
-                    </div>
+
                     {pointsToUse > 0 && (
                       <div className="flex justify-between text-green-600">
                       <span>Diskon Poin ({pointsToUse} poin):</span>
@@ -1777,7 +1810,13 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
               {/* Action Buttons */}
               <div className="space-y-3">
                 <button
-                  onClick={processPayment}
+                  onClick={() => {
+                    if (paymentMethod === 'CASH') {
+                      setShowCashPaymentModal(true)
+                    } else {
+                      processPayment()
+                    }
+                  }}
                   disabled={cart.length === 0}
                   className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white py-3 px-6 rounded-lg font-medium text-base transition-colors shadow-sm flex items-center justify-center"
                 >
@@ -1853,9 +1892,26 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                     <p className="text-sm font-medium text-gray-500">Metode Pembayaran</p>
                     <p className="text-sm text-gray-900">
                       {completedTransaction.paymentMethod === 'CASH' ? 'Tunai' :
-                       completedTransaction.paymentMethod === 'CARD' ? 'Kartu' : 'Dompet Digital'}
+                       completedTransaction.paymentMethod === 'CARD' ? 'Kartu' :
+                       completedTransaction.paymentMethod === 'DIGITAL_WALLET' ? 'Dompet Digital' :
+                       completedTransaction.paymentMethod === 'BANK_TRANSFER' ? 'Transfer Bank' :
+                       completedTransaction.paymentMethod === 'MIDTRANS' ? 'Midtrans Payment Gateway' :
+                       'Metode Lain'}
                     </p>
                   </div>
+                  {/* Cash Payment Details */}
+                  {completedTransaction.paymentMethod === 'CASH' && cashAmount > 0 && (
+                    <>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Nominal Pembayaran</p>
+                        <p className="text-sm text-gray-900">{formatCurrency(cashAmount)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Kembalian</p>
+                        <p className="text-sm text-gray-900">{formatCurrency(changeAmount)}</p>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {/* Items */}
@@ -1917,12 +1973,7 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                         {formatCurrency(completedTransaction.total / 1.1)}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Pajak (10%):</span>
-                      <span className="text-sm text-gray-900">
-                        {formatCurrency(completedTransaction.total * 0.1 / 1.1)}
-                      </span>
-                    </div>
+
                     {(completedTransaction.pointsUsed ?? 0) > 0 && (
                       <div className="flex justify-between text-green-600">
                         <span className="text-sm text-gray-600">Diskon Poin ({completedTransaction.pointsUsed} poin):</span>
@@ -1962,6 +2013,8 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                   </div>
                 </div>
 
+
+
                 {/* Actions */}
                 <div className="flex justify-end space-x-3 pt-4">
                   <button
@@ -1987,21 +2040,264 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
         </div>
       )}
 
-      {/* E-Wallet payments are now handled by DOKU */}
+      {/* Bank Transfer Modal */}
+      {showBankTransferModal && bankTransferTransaction && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold text-gray-900">Instruksi Transfer Bank</h2>
+                <button
+                  onClick={() => setShowBankTransferModal(false)}
+                  className="text-gray-500 hover:text-gray-700 transition-colors"
+                >
+                  <XMarkIcon className="h-6 w-6" />
+                </button>
+              </div>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <div className="flex items-start">
+                  <InformationCircleIcon className="h-6 w-6 text-blue-500 mr-2 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="font-medium text-blue-800">Informasi Pembayaran</h3>
+                    <p className="text-sm text-blue-700 mt-1">
+                      Silakan transfer sesuai dengan jumlah yang tertera ke rekening berikut. Pembayaran akan dikonfirmasi oleh admin.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                  <h3 className="font-medium text-gray-900 mb-2">Detail Transaksi</h3>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="text-gray-600">ID Transaksi:</div>
+                    <div className="font-medium text-gray-900">{bankTransferTransaction.id}</div>
+                    <div className="text-gray-600">Tanggal:</div>
+                    <div className="font-medium text-gray-900">
+                      {new Date(bankTransferTransaction.createdAt).toLocaleDateString('id-ID', {
+                        day: '2-digit',
+                        month: 'long',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </div>
+                    <div className="text-gray-600">Total Pembayaran:</div>
+                    <div className="font-medium text-green-600">{formatCurrency(bankTransferTransaction.total)}</div>
+                  </div>
+                </div>
+                
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="font-medium text-gray-900 mb-2">Rekening Tujuan</h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center bg-white p-3 border border-gray-200 rounded-lg">
+                      <div>
+                        <div className="font-medium">Bank BCA</div>
+                        <div className="text-gray-600 text-sm">ROZWA AZHAR AFIFAH</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-lg">6521167294</div>
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText('6521167294')
+                            toast.success('Nomor rekening disalin!')
+                          }}
+                          className="text-blue-600 text-xs hover:text-blue-800 flex items-center"
+                        >
+                          <DocumentDuplicateIcon className="h-3 w-3 mr-1" />
+                          Salin
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="font-medium text-gray-900 mb-2">Langkah-langkah Pembayaran</h3>
+                  <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
+                    <li>Transfer tepat sejumlah <span className="font-medium text-green-600">{formatCurrency(bankTransferTransaction.total)}</span> ke salah satu rekening di atas</li>
+                    <li>Simpan bukti transfer</li>
+                    <li>Tunjukkan bukti transfer kepada kasir atau admin untuk konfirmasi pembayaran</li>
+                    <li>Pembayaran akan diverifikasi dan status transaksi akan diperbarui</li>
+                  </ol>
+                </div>
+              </div>
+              
+              {/* Actions */}
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  onClick={() => {
+                    printBankTransferInstructions()
+                    setShowBankTransferModal(false)
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
+                >
+                  <PrinterIcon className="h-5 w-5 mr-2" />
+                  Cetak Instruksi
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      // Update transaction status to COMPLETED
+                      const response = await fetch(`/api/transactions/${bankTransferTransaction.id}`, {
+                        method: 'PATCH',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                          status: 'COMPLETED'
+                        })
+                      })
 
-      {/* DOKU Payment Modal */}
-      {showDOKUModal && pendingTransaction && (
-        <DOKUPaymentModal
-          isOpen={showDOKUModal}
-          onClose={() => {
-            setShowDOKUModal(false)
-            setPendingTransaction(null)
-            setIsProcessing(false)
-          }}
-          transactionData={pendingTransaction}
-          onSuccess={handleDOKUPaymentSuccess}
-          onError={handleDOKUPaymentError}
-        />
+                      if (response.ok) {
+                        toast.success('Pembayaran berhasil dikonfirmasi!')
+                        setShowBankTransferModal(false)
+                        // Clear cart and reset form
+                        clearCart()
+                        setCustomerName('')
+                        setCustomerPhone('')
+                        setCustomerEmail('')
+                        setMember(null)
+                        setPointsToUse(0)
+                        setVoucherCode('')
+                        setAppliedVoucher(null)
+                        setVoucherDiscount(0)
+                        setAppliedPromotions([])
+                        setPromotionDiscount(0)
+                        setBankTransferTransaction(null)
+                      } else {
+                        toast.error('Gagal mengkonfirmasi pembayaran')
+                      }
+                    } catch (error) {
+                      console.error('Error confirming payment:', error)
+                      toast.error('Terjadi kesalahan saat mengkonfirmasi pembayaran')
+                    }
+                  }}
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
+                >
+                  <CheckCircleIcon className="h-5 w-5 mr-2" />
+                  Konfirmasi Pembayaran
+                </button>
+                <button
+                  onClick={() => setShowBankTransferModal(false)}
+                  className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cash Payment Modal */}
+      {showCashPaymentModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Pembayaran Tunai</h3>
+              <button
+                onClick={() => {
+                  setShowCashPaymentModal(false)
+                  setPaymentMethod('CASH') // Keep CASH selected
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Total Belanja
+                </label>
+                <div className="text-2xl font-bold text-gray-900">
+                  {formatCurrency(total)}
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Nominal Pembayaran
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1000"
+                  value={cashAmount || ''}
+                  onChange={(e) => {
+                    const amount = parseFloat(e.target.value) || 0
+                    setCashAmount(amount)
+                    const change = amount - total
+                    setChangeAmount(change > 0 ? change : 0)
+                  }}
+                  placeholder="Masukkan nominal pembayaran"
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white"
+                  autoFocus
+                />
+                
+                {/* Quick Amount Buttons */}
+                <div className="flex gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCashAmount(total)
+                      setChangeAmount(0)
+                    }}
+                    className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
+                  >
+                    Pas
+                  </button>
+                </div>
+              </div>
+              
+              {/* Change Display */}
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-green-800">Kembalian:</span>
+                  <span className="text-lg font-bold text-green-900">
+                    {cashAmount >= total ? formatCurrency(changeAmount) : '-'}
+                  </span>
+                </div>
+                {cashAmount > 0 && cashAmount < total && (
+                  <p className="text-xs text-red-600 mt-1">
+                    Pembayaran kurang {formatCurrency(total - cashAmount)}
+                  </p>
+                )}
+              </div>
+            </div>
+            
+            {/* Modal Actions */}
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowCashPaymentModal(false)
+                  // Process payment if amount is sufficient
+                  if (cashAmount >= total) {
+                    processPayment()
+                  }
+                }}
+                disabled={!cashAmount || cashAmount < total}
+                className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-lg font-medium transition-colors"
+              >
+                Konfirmasi Pembayaran
+              </button>
+              <button
+                onClick={() => {
+                  setShowCashPaymentModal(false)
+                  setPaymentMethod('CASH') // Keep CASH selected but reset amounts
+                  setCashAmount(0)
+                  setChangeAmount(0)
+                }}
+                className="px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+              >
+                Batal
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       </div>
     </div>

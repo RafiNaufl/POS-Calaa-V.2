@@ -16,7 +16,7 @@ const prismaClientSingleton = () => {
     // in the schema.prisma file, not here in the PrismaClient constructor
   }).$extends({
     query: {
-      // No need to remove dokuReferenceId anymore as the column exists in the database
+      // Transaction query extensions
       transaction: {
         async findMany({ args, query }) {
           return query(args);

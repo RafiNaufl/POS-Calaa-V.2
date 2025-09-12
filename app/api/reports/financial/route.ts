@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
     const promoDiscounts = transactions.reduce((sum: number, t: any) => sum + t.promoDiscount, 0)
     const totalDiscounts = discounts + voucherDiscounts + promoDiscounts
     const netSales = grossSales - totalDiscounts
-    const taxes = transactions.reduce((sum: number, t: any) => sum + t.tax, 0)
+    // Taxes removed - no longer calculating tax
     const totalRevenue = transactions.reduce((sum: number, t: any) => sum + t.finalTotal, 0)
     
     // Calculate cost of goods sold (COGS) using actual cost price data
@@ -241,7 +241,7 @@ export async function GET(request: NextRequest) {
           total: totalDiscounts
         },
         netSales,
-        taxes,
+        // taxes field removed
         totalRevenue
       },
       costs: {

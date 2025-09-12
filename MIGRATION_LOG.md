@@ -49,10 +49,8 @@ Tanggal: 29 Juli 2025
 - `DATABASE_URL`: Sudah dikonfigurasi dengan Prisma Accelerate
 - `NEXTAUTH_URL`: Perlu disesuaikan dengan domain production
 - `NEXTAUTH_SECRET`: Perlu diganti untuk production
-- DOKU keys: Sudah dikonfigurasi untuk development
 
 ## Next Steps:
 1. Deploy aplikasi ke Vercel
 2. Update NEXTAUTH_URL dengan domain production
 3. Generate NEXTAUTH_SECRET baru untuk production
-4. Update DOKU keys untuk production jika diperlukan

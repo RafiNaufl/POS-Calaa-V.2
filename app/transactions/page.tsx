@@ -12,6 +12,9 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   ClockIcon,
+  QuestionMarkCircleIcon,
+  ArrowUturnLeftIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline'
 import ReceiptPreview from '../../components/ReceiptPreview'
 import Navbar from '@/components/Navbar'
@@ -27,8 +30,8 @@ interface Transaction {
   voucherDiscount?: number
   promoDiscount?: number
   voucherCode?: string
-  paymentMethod: 'CASH' | 'CARD' | 'DIGITAL_WALLET'
-  status: 'COMPLETED' | 'CANCELLED' | 'PENDING'
+  paymentMethod: 'CASH' | 'CARD' | 'DIGITAL_WALLET' | 'VIRTUAL_ACCOUNT' | 'CONVENIENCE_STORE' | 'PAYLATER'
+  status: 'COMPLETED' | 'CANCELLED' | 'PENDING' | 'REFUNDED'
   cashier: string
   customer?: string
   customerPhone?: string
@@ -55,6 +58,10 @@ export default function TransactionsPage() {
   const [showModal, setShowModal] = useState(false)
   const [showReceiptPreview, setShowReceiptPreview] = useState(false)
   const [receiptTransaction, setReceiptTransaction] = useState<Transaction | null>(null)
+  const [showRefundModal, setShowRefundModal] = useState(false)
+  const [showCancelModal, setShowCancelModal] = useState(false)
+  const [actionTransaction, setActionTransaction] = useState<Transaction | null>(null)
+  const [actionLoading, setActionLoading] = useState(false)
 
   // Fetch transactions from API using SWR for real-time updates
   const fetcher = async (url: string) => {
@@ -244,7 +251,16 @@ export default function TransactionsPage() {
       case 'CANCELLED':
         return <XCircleIcon className="h-5 w-5 text-red-500" />
       case 'PENDING':
-        return <ClockIcon className="h-5 w-5 text-yellow-500" />
+        return (
+          <div className="flex items-center">
+            <ClockIcon className="h-5 w-5 text-yellow-500" />
+            <Link href="/cashier/help" className="ml-1">
+              <QuestionMarkCircleIcon className="h-4 w-4 text-blue-500 hover:text-blue-700" title="Bantuan status pending" />
+            </Link>
+          </div>
+        )
+      case 'REFUNDED':
+        return <ArrowUturnLeftIcon className="h-5 w-5 text-orange-500" />
       default:
         return null
     }
@@ -258,6 +274,8 @@ export default function TransactionsPage() {
         return 'bg-red-100 text-red-800'
       case 'PENDING':
         return 'bg-yellow-100 text-yellow-800'
+      case 'REFUNDED':
+        return 'bg-orange-100 text-orange-800'
       default:
         return 'bg-gray-100 text-gray-800'
     }
@@ -271,6 +289,8 @@ export default function TransactionsPage() {
         return 'Kartu'
       case 'DIGITAL_WALLET':
         return 'E-Wallet'
+      case 'VIRTUAL_ACCOUNT':
+        return 'Virtual Account'
       default:
         return method
     }
@@ -290,6 +310,72 @@ export default function TransactionsPage() {
     setShowReceiptPreview(false)
     setReceiptTransaction(null)
     console.log('Receipt printed successfully')
+  }
+
+  const handleRefund = (transaction: Transaction) => {
+    setActionTransaction(transaction)
+    setShowRefundModal(true)
+  }
+
+  const handleCancel = (transaction: Transaction) => {
+    setActionTransaction(transaction)
+    setShowCancelModal(true)
+  }
+
+  const confirmRefund = async () => {
+    if (!actionTransaction) return
+    
+    setActionLoading(true)
+    try {
+      const response = await fetch(`/api/transactions/${actionTransaction.id}/refund`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+      
+      if (response.ok) {
+        mutate() // Refresh data
+        setShowRefundModal(false)
+        setActionTransaction(null)
+        alert('Transaksi berhasil di-refund')
+      } else {
+        alert('Gagal melakukan refund')
+      }
+    } catch (error) {
+      console.error('Error refunding transaction:', error)
+      alert('Terjadi kesalahan saat melakukan refund')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const confirmCancel = async () => {
+    if (!actionTransaction) return
+    
+    setActionLoading(true)
+    try {
+      const response = await fetch(`/api/transactions/${actionTransaction.id}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+      
+      if (response.ok) {
+        mutate() // Refresh data
+        setShowCancelModal(false)
+        setActionTransaction(null)
+        alert('Transaksi berhasil dibatalkan')
+      } else {
+        alert('Gagal membatalkan transaksi')
+      }
+    } catch (error) {
+      console.error('Error cancelling transaction:', error)
+      alert('Terjadi kesalahan saat membatalkan transaksi')
+    } finally {
+      setActionLoading(false)
+    }
   }
 
   return (
@@ -335,6 +421,7 @@ export default function TransactionsPage() {
               <option value="COMPLETED">Selesai</option>
               <option value="PENDING">Pending</option>
               <option value="CANCELLED">Dibatalkan</option>
+              <option value="REFUNDED">Dikembalikan</option>
             </select>
 
             {/* Payment Method Filter */}
@@ -347,6 +434,7 @@ export default function TransactionsPage() {
               <option value="CASH">Tunai</option>
               <option value="CARD">Kartu</option>
               <option value="DIGITAL_WALLET">E-Wallet</option>
+              <option value="VIRTUAL_ACCOUNT">Virtual Account</option>
             </select>
 
             {/* Date Filter */}
@@ -467,7 +555,8 @@ export default function TransactionsPage() {
                           {getStatusIcon(transaction.status)}
                           <span className="ml-1">
                             {transaction.status === 'COMPLETED' ? 'Selesai' :
-                             transaction.status === 'PENDING' ? 'Pending' : 'Dibatalkan'}
+                             transaction.status === 'PENDING' ? 'Pending' :
+                             transaction.status === 'REFUNDED' ? 'Dikembalikan' : 'Dibatalkan'}
                           </span>
                         </span>
                       </td>
@@ -490,6 +579,24 @@ export default function TransactionsPage() {
                           >
                             <PrinterIcon className="h-5 w-5" />
                           </button>
+                          {transaction.status === 'COMPLETED' && (
+                            <button
+                              onClick={() => handleRefund(transaction)}
+                              className="text-orange-600 hover:text-orange-900"
+                              title="Refund/Retur"
+                            >
+                              <ArrowUturnLeftIcon className="h-5 w-5" />
+                            </button>
+                          )}
+                          {(transaction.status === 'COMPLETED' || transaction.status === 'PENDING') && (
+                            <button
+                              onClick={() => handleCancel(transaction)}
+                              className="text-red-600 hover:text-red-900"
+                              title="Batalkan Transaksi"
+                            >
+                              <TrashIcon className="h-5 w-5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -555,7 +662,8 @@ export default function TransactionsPage() {
                       {getStatusIcon(selectedTransaction.status)}
                       <span className="ml-1">
                         {selectedTransaction.status === 'COMPLETED' ? 'Selesai' :
-                         selectedTransaction.status === 'PENDING' ? 'Pending' : 'Dibatalkan'}
+                         selectedTransaction.status === 'PENDING' ? 'Pending' :
+                         selectedTransaction.status === 'REFUNDED' ? 'Dikembalikan' : 'Dibatalkan'}
                       </span>
                     </span>
                   </div>
@@ -678,6 +786,76 @@ export default function TransactionsPage() {
           onClose={() => setShowReceiptPreview(false)}
           onPrint={handlePrintComplete}
         />
+      )}
+
+      {/* Refund Confirmation Modal */}
+      {showRefundModal && actionTransaction && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Konfirmasi Refund
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Apakah Anda yakin ingin melakukan refund untuk transaksi <strong>{actionTransaction.id}</strong>?
+              <br /><br />
+              Total yang akan di-refund: <strong>{formatCurrency(actionTransaction.total)}</strong>
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowRefundModal(false)
+                  setActionTransaction(null)
+                }}
+                className="px-4 py-2 text-gray-600 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                disabled={actionLoading}
+              >
+                Batal
+              </button>
+              <button
+                onClick={confirmRefund}
+                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50"
+                disabled={actionLoading}
+              >
+                {actionLoading ? 'Memproses...' : 'Ya, Refund'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Confirmation Modal */}
+      {showCancelModal && actionTransaction && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Konfirmasi Batalkan Transaksi
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Apakah Anda yakin ingin membatalkan transaksi <strong>{actionTransaction.id}</strong>?
+              <br /><br />
+              <span className="text-red-600 font-medium">Peringatan: Tindakan ini tidak dapat dibatalkan!</span>
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowCancelModal(false)
+                  setActionTransaction(null)
+                }}
+                className="px-4 py-2 text-gray-600 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                disabled={actionLoading}
+              >
+                Batal
+              </button>
+              <button
+                onClick={confirmCancel}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                disabled={actionLoading}
+              >
+                {actionLoading ? 'Memproses...' : 'Ya, Batalkan'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -953,7 +953,6 @@ export async function GET(request: NextRequest) {
        paymentMethodAnalysis = [
          { method: 'CASH', count: 0, sales: 0, percentage: 0 },
          { method: 'TRANSFER', count: 0, sales: 0, percentage: 0 },
-         { method: 'QRIS', count: 0, sales: 0, percentage: 0 },
          { method: 'CREDIT_CARD', count: 0, sales: 0, percentage: 0 },
          { method: 'DEBIT_CARD', count: 0, sales: 0, percentage: 0 }
        ] as PaymentMethodAnalysisItem[]

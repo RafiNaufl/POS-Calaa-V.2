@@ -61,8 +61,6 @@ model Transaction {
   paymentMethod     String            @default("CASH")
   status            String            @default("COMPLETED")
   paymentStatus     String?
-  xenditChargeId    String?
-  xenditReferenceId String?
   paidAt            DateTime?
   failureReason     String?
   userId            String
@@ -75,7 +73,6 @@ model Transaction {
   notes             String?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
-  dokuReferenceId   String?
   pointHistory      PointHistory[]
   member            Member?           @relation(fields: [memberId], references: [id])
   user              User              @relation(fields: [userId], references: [id])

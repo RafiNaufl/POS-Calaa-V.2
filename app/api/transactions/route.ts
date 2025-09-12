@@ -120,9 +120,9 @@ export async function POST(request: NextRequest) {
     // Parse request body to get transaction data
     const body = await request.json()
     const { 
+      id,
       items, 
       subtotal, 
-      tax, 
       total, 
       paymentMethod, 
       customerName, 
@@ -144,9 +144,9 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    if (subtotal === undefined || tax === undefined || total === undefined) {
+    if (subtotal === undefined || total === undefined) {
       return NextResponse.json(
-        { error: 'Subtotal, tax, and total are required' },
+        { error: 'Subtotal and total are required' },
         { status: 400 }
       )
     }
@@ -159,23 +159,32 @@ export async function POST(request: NextRequest) {
     }
     
     // Create transaction
+    const transactionData: any = {
+      userId: session.user.id,
+      total: parseFloat(subtotal.toString()), // Use subtotal as total
+      tax: 0, // Set tax to 0 since we're removing tax feature
+      finalTotal: parseFloat(total.toString()), // Required field in schema
+      paymentMethod,
+      status: paymentMethod === 'BANK_TRANSFER' || paymentMethod === 'MIDTRANS' ? 'PENDING' : 'COMPLETED',
+      paymentStatus: paymentMethod === 'BANK_TRANSFER' || paymentMethod === 'MIDTRANS' ? 'PENDING' : 'PAID',
+      paidAt: paymentMethod === 'BANK_TRANSFER' || paymentMethod === 'MIDTRANS' ? null : new Date(),
+      customerName: customerName || null,
+      customerPhone: customerPhone || null,
+      customerEmail: customerEmail || null,
+      pointsUsed: pointsUsed || 0,
+      voucherDiscount: voucherDiscount || 0,
+      promoDiscount: promotionDiscount || promoDiscount || 0,
+      memberId: memberId || null,
+    };
+
+    // Add custom ID if provided (for Midtrans)
+    if (id) {
+      transactionData.id = id;
+    }
+
     const transaction = await prisma.transaction.create({
       data: {
-        userId: session.user.id,
-        total: parseFloat(subtotal.toString()), // Use subtotal as total
-        tax: parseFloat(tax.toString()),
-        finalTotal: parseFloat(total.toString()), // Required field in schema
-        paymentMethod,
-        status: paymentMethod === 'E_WALLET' ? 'PENDING' : 'COMPLETED',
-        paymentStatus: paymentMethod === 'E_WALLET' ? 'PENDING' : 'PAID',
-        paidAt: paymentMethod === 'E_WALLET' ? null : new Date(),
-        customerName: customerName || null,
-        customerPhone: customerPhone || null,
-        customerEmail: customerEmail || null,
-        pointsUsed: pointsUsed || 0,
-        voucherDiscount: voucherDiscount || 0,
-        promoDiscount: promotionDiscount || promoDiscount || 0,
-        memberId: memberId || null,
+        ...transactionData,
         items: {
           create: items.map((item: any) => ({
             productId: item.productId,
@@ -241,25 +250,102 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    // If points were used and there's a member, update member points
-    if (pointsUsed > 0 && memberId) {
+    // Update member points and total spent if there's a member
+    if (memberId) {
       try {
+        // Calculate points earned (1 point per 1000 rupiah spent)
+        const pointsEarned = Math.floor(parseFloat(total.toString()) / 1000)
+        
+        // Update member points and total spent
+        const memberUpdateData: any = {
+          totalSpent: {
+            increment: parseFloat(total.toString())
+          },
+          lastVisit: new Date()
+        }
+        
+        // If points were used, decrement them
+        if (pointsUsed > 0) {
+          memberUpdateData.points = {
+            increment: pointsEarned - pointsUsed
+          }
+        } else {
+          memberUpdateData.points = {
+            increment: pointsEarned
+          }
+        }
+        
         await prisma.member.update({
           where: { id: memberId },
-          data: {
-            points: {
-              decrement: pointsUsed
+          data: memberUpdateData
+        })
+        
+        // Create point history record for points earned
+        if (pointsEarned > 0) {
+          await prisma.pointHistory.create({
+            data: {
+              memberId: memberId,
+              points: pointsEarned,
+              type: 'EARNED',
+              description: `Poin dari transaksi #${transaction.id}`,
+              transactionId: transaction.id
             }
+          })
+        }
+        
+        // Create point history record for points used
+        if (pointsUsed > 0) {
+          await prisma.pointHistory.create({
+            data: {
+              memberId: memberId,
+              points: -pointsUsed,
+              type: 'USED',
+              description: `Poin digunakan untuk transaksi #${transaction.id}`,
+              transactionId: transaction.id
+            }
+          })
+        }
+        
+        // Update transaction with points earned
+        await prisma.transaction.update({
+          where: { id: transaction.id },
+          data: {
+            pointsEarned: pointsEarned
           }
         })
+        
+        console.log(`Member ${memberId} updated: +${pointsEarned} points earned, ${pointsUsed} points used, +${total} total spent`)
       } catch (error) {
-        console.error('Error updating member points:', error)
+        console.error('Error updating member data:', error)
+        // Continue anyway since the transaction was created
+      }
+    }
+    
+    // Update product stock for completed transactions
+    if (paymentMethod !== 'VIRTUAL_ACCOUNT' && paymentMethod !== 'BANK_TRANSFER') {
+      try {
+        // Update stock for each product in the transaction
+        for (const item of items) {
+          await prisma.product.update({
+            where: { id: item.productId },
+            data: {
+              stock: {
+                decrement: item.quantity
+              }
+            }
+          })
+        }
+        console.log(`Stock updated for transaction ${transaction.id}`)
+      } catch (error) {
+        console.error('Error updating product stock:', error)
         // Continue anyway since the transaction was created
       }
     }
     
     // Set transaction ID for logging
     transactionId = transaction.id
+    
+
     
     return NextResponse.json(transaction)
   } catch (error: any) {
@@ -354,9 +440,9 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { id, paymentStatus, xenditChargeId, xenditReferenceId, dokuReferenceId, status, amount, paymentMethod, transactionId } = body
+    const { id, paymentStatus, status, amount, paymentMethod, transactionId } = body
 
-    console.log('Updating transaction:', { id, paymentStatus, xenditChargeId, xenditReferenceId, dokuReferenceId, status, amount, paymentMethod, transactionId })
+    console.log('Updating transaction:', { id, paymentStatus, status, amount, paymentMethod, transactionId })
 
     if (!id) {
       return NextResponse.json(
@@ -398,9 +484,6 @@ export async function PATCH(request: NextRequest) {
       where: { id },
       data: {
         ...(paymentStatus && { paymentStatus }),
-        ...(xenditChargeId && { xenditChargeId }),
-        ...(xenditReferenceId && { xenditReferenceId }),
-        ...(dokuReferenceId && { dokuReferenceId }),
         ...(status && { status }),
         ...(paymentStatus === 'PAID' && { paidAt: new Date() }),
         ...(amount !== undefined && { amount: parseFloat(amount.toString()) }),
@@ -416,6 +499,77 @@ export async function PATCH(request: NextRequest) {
         member: true
       }
     })
+
+    // If transaction status changed to COMPLETED and there's a member, update member data
+    if (status === 'COMPLETED' && existingTransaction.status !== 'COMPLETED' && updatedTransaction.memberId) {
+      try {
+        // Calculate points earned (1 point per 1000 rupiah spent)
+        const pointsEarned = Math.floor(updatedTransaction.finalTotal / 1000)
+        
+        // Update member points and total spent
+        const memberUpdateData: any = {
+          totalSpent: {
+            increment: updatedTransaction.finalTotal
+          },
+          lastVisit: new Date()
+        }
+        
+        // If points were used, calculate net points
+        if (updatedTransaction.pointsUsed > 0) {
+          memberUpdateData.points = {
+            increment: pointsEarned - updatedTransaction.pointsUsed
+          }
+        } else {
+          memberUpdateData.points = {
+            increment: pointsEarned
+          }
+        }
+        
+        await prisma.member.update({
+          where: { id: updatedTransaction.memberId },
+          data: memberUpdateData
+        })
+        
+        // Create point history record for points earned
+        if (pointsEarned > 0) {
+          await prisma.pointHistory.create({
+            data: {
+              memberId: updatedTransaction.memberId,
+              points: pointsEarned,
+              type: 'EARNED',
+              description: `Poin dari transaksi #${updatedTransaction.id}`,
+              transactionId: updatedTransaction.id
+            }
+          })
+        }
+        
+        // Create point history record for points used
+        if (updatedTransaction.pointsUsed > 0) {
+          await prisma.pointHistory.create({
+            data: {
+              memberId: updatedTransaction.memberId,
+              points: -updatedTransaction.pointsUsed,
+              type: 'USED',
+              description: `Poin digunakan untuk transaksi #${updatedTransaction.id}`,
+              transactionId: updatedTransaction.id
+            }
+          })
+        }
+        
+        // Update transaction with points earned
+        await prisma.transaction.update({
+          where: { id: updatedTransaction.id },
+          data: {
+            pointsEarned: pointsEarned
+          }
+        })
+        
+        console.log(`Member ${updatedTransaction.memberId} updated on transaction completion: +${pointsEarned} points earned, ${updatedTransaction.pointsUsed} points used, +${updatedTransaction.finalTotal} total spent`)
+      } catch (error) {
+        console.error('Error updating member data on transaction completion:', error)
+        // Continue anyway since the transaction was updated
+      }
+    }
 
     console.log('Transaction updated successfully:', { id: updatedTransaction.id, status: updatedTransaction.status, paymentStatus: updatedTransaction.paymentStatus })
 

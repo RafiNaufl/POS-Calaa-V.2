@@ -19,11 +19,6 @@
   "env": {
     "DATABASE_URL": "prisma+postgres://accelerate.prisma-data.net/?api_key=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcGlfa2V5IjoiMDFKWTNHOTNNN0c5VDQxMTkyWjNWVkJWREoiLCJ0ZW5hbnRfaWQiOiIzMDc4OTEwYzg2OTg2MzFkZjcxNmZhNGE0MmMzMjM1Y2IwMTdiMmY3ZDExYWZmNmIxYzNjMDE2NDk5YTgyM2ZjIiwiaW50ZXJuYWxfc2VjcmV0IjoiMDkxOTJlY2MtNmM5Mi00MzM0LTgyNzYtNTA2YzAyNjBhYWI3In0.OBpHIkXoyirglHz7l3yoJpMMvyaHePFxjMX2lg9F6_Y",
     "NEXTAUTH_URL": "https://pos-fashion-app.vercel.app",
-    "NEXTAUTH_SECRET": "your-production-secret-key-here",
-    
-    "DOKU_CLIENT_ID": "BRN-0227-1754893463001",
-    "DOKU_SECRET_KEY": "SK-fsp7OJcKjQdN4yya4lFK",
-    "DOKU_PUBLIC_KEY": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmdJxso7rFG8vLqtpoD5aMjjChoVj8oRPpJoa4hx8bTUI8OXlOTXK8ZfLvMmfI+E1fm6bvWWDTCNskPHCzIBtqfmaydmlk2p3t6PRxOHrEGbR/8HjDLFKSvad/Z1hs0U03Kb825hd68OSgg6lt/5R7rNEjf3HoVY0hp2+AqvNVdBIv7cQHAkdJY1qYhR+HyvMKIqOqeCtsD1PnuszRj8u3ENQHCjIakDcK0Dd0KDHfTGSgPn09sQTSXtUf+iushT/utZfOk5hbGRZhePc4pRqvkOvTdKe9iIqYxDRWIa+DuH50tAT3NOCVdxseqSqo2Tf6W+3wjfFjoyFfbKLmCDV9wIDAQAB\n-----END PUBLIC KEY-----",
-    "DOKU_API_URL": "https://api-sandbox.doku.com"
+    "NEXTAUTH_SECRET": "your-production-secret-key-here"
   }
 }

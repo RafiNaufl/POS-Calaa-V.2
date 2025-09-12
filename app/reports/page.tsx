@@ -892,7 +892,10 @@ export default function ReportsPage() {
                             {paymentMethodAnalysis.map((method) => (
                               <tr key={method.method}>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                  {method.method}
+                                  {method.method === 'CASH' ? 'Tunai' :
+                                   method.method === 'CARD' ? 'Kartu' :
+                                   method.method === 'DIGITAL_WALLET' ? 'Dompet Digital' :
+                                   method.method}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                   {method.count}

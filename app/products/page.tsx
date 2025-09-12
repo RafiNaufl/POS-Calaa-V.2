@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import useSWR from 'swr'
+import ProductImage from '@/components/ProductImage'
 import {
   PlusIcon,
   PencilIcon,
@@ -21,7 +22,6 @@ import Navbar from '@/components/Navbar'
 interface Product {
   id: string
   name: string
-  description?: string
   price: number
   costPrice?: number
   stock: number
@@ -31,8 +31,8 @@ interface Product {
   createdAt: string
   image?: string
   productCode?: string
-  size?: string
-  color?: string
+  size: string
+  color: string
 }
 
 interface Category {
@@ -146,7 +146,6 @@ export default function ProductsPage() {
         {
           id: '1',
           name: 'Kemeja Denim',
-          description: 'Kemeja denim lengan panjang dengan warna biru klasik',
           price: 250000,
           stock: 20,
           category: '1',
@@ -154,11 +153,12 @@ export default function ProductsPage() {
           isActive: true,
           createdAt: '2024-01-15',
           image: 'https://images.unsplash.com/photo-1598033129183-c4f50c736f10?w=400&h=300&fit=crop&crop=center',
+          size: 'L',
+          color: 'Biru',
         },
         {
           id: '2',
           name: 'Kaos Polos',
-          description: 'Kaos polos premium dengan bahan katun combed 30s',
           price: 120000,
           stock: 15,
           category: '1',
@@ -166,11 +166,12 @@ export default function ProductsPage() {
           isActive: true,
           createdAt: '2024-01-15',
           image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=400&h=300&fit=crop&crop=center',
+          size: 'M',
+          color: 'Putih',
         },
         {
           id: '3',
           name: 'Sweater Rajut',
-          description: 'Sweater rajut hangat dengan desain minimalis',
           price: 300000,
           stock: 10,
           category: '1',
@@ -178,11 +179,12 @@ export default function ProductsPage() {
           isActive: true,
           createdAt: '2024-01-15',
           image: 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=400&h=300&fit=crop&crop=center',
+          size: 'XL',
+          color: 'Abu-abu',
         },
         {
           id: '4',
           name: 'Celana Jeans',
-          description: 'Celana jeans slim fit dengan warna biru tua',
           price: 350000,
           stock: 50,
           category: '2',
@@ -190,11 +192,12 @@ export default function ProductsPage() {
           isActive: true,
           createdAt: '2024-01-15',
           image: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=400&h=300&fit=crop&crop=center',
+          size: '32',
+          color: 'Biru Tua',
         },
         {
           id: '5',
           name: 'Rok Panjang',
-          description: 'Rok panjang dengan bahan linen premium',
           price: 220000,
           stock: 25,
           category: '2',
@@ -202,11 +205,12 @@ export default function ProductsPage() {
           isActive: true,
           createdAt: '2024-01-15',
           image: 'https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?w=400&h=300&fit=crop&crop=center',
+          size: 'M',
+          color: 'Hitam',
         },
         {
           id: '6',
           name: 'Celana Pendek',
-          description: 'Celana pendek casual untuk aktivitas sehari-hari',
           price: 180000,
           stock: 30,
           category: '2',
@@ -214,11 +218,12 @@ export default function ProductsPage() {
           isActive: false,
           createdAt: '2024-01-15',
           image: 'https://images.unsplash.com/photo-1591195853828-11db59a44f6b?w=400&h=300&fit=crop&crop=center',
+          size: 'L',
+          color: 'Khaki',
         },
         {
           id: '7',
           name: 'Topi Bucket',
-          description: 'Topi bucket dengan bahan katun yang nyaman',
           price: 150000,
           stock: 12,
           category: '3',
@@ -226,11 +231,12 @@ export default function ProductsPage() {
           isActive: true,
           createdAt: '2024-01-15',
           image: 'https://images.unsplash.com/photo-1556306535-0f09a537f0a3?w=400&h=300&fit=crop&crop=center',
+          size: 'One Size',
+          color: 'Hitam',
         },
         {
           id: '8',
           name: 'Dompet Kulit',
-          description: 'Dompet kulit asli dengan banyak slot kartu',
           price: 280000,
           stock: 8,
           category: '3',
@@ -238,11 +244,12 @@ export default function ProductsPage() {
           isActive: true,
           createdAt: '2024-01-15',
           image: 'https://images.unsplash.com/photo-1627123424574-724758594e93?w=400&h=300&fit=crop&crop=center',
+          size: 'Standard',
+          color: 'Coklat',
         },
         {
           id: '9',
           name: 'Sneakers Casual',
-          description: 'Sepatu sneakers casual dengan sol empuk',
           price: 450000,
           stock: 20,
           category: '4',
@@ -250,11 +257,12 @@ export default function ProductsPage() {
           isActive: true,
           createdAt: '2024-01-15',
           image: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=400&h=300&fit=crop&crop=center',
+          size: '42',
+          color: 'Putih',
         },
         {
           id: '10',
           name: 'Boots Kulit',
-          description: 'Boots kulit premium dengan desain klasik',
           price: 850000,
           stock: 15,
           category: '4',
@@ -262,6 +270,8 @@ export default function ProductsPage() {
           isActive: true,
           createdAt: '2024-01-15',
           image: 'https://images.unsplash.com/photo-1608256246200-53e635b5b65f?w=400&h=300&fit=crop&crop=center',
+          size: '43',
+          color: 'Coklat Tua',
         },
       ])
       setLoading(false)
@@ -492,31 +502,21 @@ export default function ProductsPage() {
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
                             <div className="flex-shrink-0 h-12 w-12">
-                              {product.image ? (
-                                <Image
-                                  src={product.image}
-                                  alt={product.name}
-                                  width={48}
-                                  height={48}
-                                  className="h-12 w-12 rounded-lg object-cover"
-                                  onError={(e) => {
-                                    const target = e.target as HTMLImageElement;
-                                    target.style.display = 'none';
-                                    target.nextElementSibling?.classList.remove('hidden');
-                                  }}
-                                  unoptimized={true}
-                                />
-                              ) : null}
-                              <div className={`h-12 w-12 bg-gray-200 rounded-lg flex items-center justify-center ${product.image ? 'hidden' : ''}`}>
-                                <span className="text-gray-400 text-xs">IMG</span>
-                              </div>
+                              <ProductImage
+                                productId={product.id}
+                                productName={product.name}
+                                image={product.image}
+                                width={48}
+                                height={48}
+                                className="h-12 w-12 rounded-lg object-cover"
+                              />
                             </div>
                             <div className="ml-4">
                               <div className="text-sm font-medium text-gray-900">
                                 {product.name} {product.productCode && <span className="text-xs text-gray-500 ml-1">({product.productCode})</span>}
                               </div>
                               <div className="text-sm text-gray-500">
-                                {product.description}
+                                {product.size} - {product.color}
                               </div>
                               <div className="flex flex-wrap gap-1 mt-1">
                                 {product.size && (

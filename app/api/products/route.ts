@@ -7,7 +7,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const includeInactive = searchParams.get('includeInactive') === 'true'
     const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '50')
+    const limit = parseInt(searchParams.get('limit') || '20')
     const skip = (page - 1) * limit
     
     const whereClause = includeInactive ? {} : { isActive: true }
@@ -31,7 +31,6 @@ export async function GET(request: NextRequest) {
         size: true,
         color: true,
         image: true,
-        description: true,
         createdAt: true,
         categoryId: true,
         category: {

@@ -11,8 +11,8 @@ interface Transaction {
   subtotal: number
   tax: number
   total: number
-  paymentMethod: "CASH" | "CARD" | "DIGITAL_WALLET"
-  status: "COMPLETED" | "CANCELLED" | "PENDING"
+  paymentMethod: "CASH" | "CARD" | "DIGITAL_WALLET" | "VIRTUAL_ACCOUNT" | "CONVENIENCE_STORE" | "PAYLATER"
+  status: "COMPLETED" | "CANCELLED" | "PENDING" | "REFUNDED"
   cashier: string
   customer?: string
   pointsUsed?: number
@@ -52,6 +52,13 @@ const getPaymentMethodLabel = (method: string) => {
       return "Kartu"
     case "DIGITAL_WALLET":
       return "Dompet Digital"
+    case "VIRTUAL_ACCOUNT":
+      return "Virtual Account"
+    // E-Wallet case removed
+    case "CONVENIENCE_STORE":
+      return "Convenience Store"
+    case "PAYLATER":
+      return "PayLater"
     default:
       return method
   }
