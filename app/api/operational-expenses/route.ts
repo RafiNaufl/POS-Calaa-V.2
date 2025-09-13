@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
   }
   
   try {
-    const { searchParams } = new URL(request.url)
+    const searchParams = request.nextUrl.searchParams
     const startDate = searchParams.get('startDate') ? new Date(searchParams.get('startDate') as string) : undefined
     const endDate = searchParams.get('endDate') ? new Date(searchParams.get('endDate') as string) : undefined
     const category = searchParams.get('category') || undefined

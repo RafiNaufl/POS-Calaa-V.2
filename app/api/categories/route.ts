@@ -78,7 +78,7 @@ export async function DELETE(request: NextRequest) {
   
   try {
     // Check if ID is in URL params first
-    const { searchParams } = new URL(request.url)
+    const searchParams = request.nextUrl.searchParams
     let id = searchParams.get('id')
 
     // If not in URL params, try to get from request body

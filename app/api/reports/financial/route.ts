@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
   }
   
   try {
-    const { searchParams } = new URL(request.url)
+    const searchParams = request.nextUrl.searchParams
     const range = searchParams.get('range') || '30days'
     
     // Calculate date range

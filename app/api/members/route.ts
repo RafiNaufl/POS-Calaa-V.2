@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 // GET - Fetch all members
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
+    const searchParams = request.nextUrl.searchParams
     const search = searchParams.get('search')
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '10')
@@ -137,7 +137,7 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     // Check if ID is in URL params first
-    const { searchParams } = new URL(request.url)
+    const searchParams = request.nextUrl.searchParams
     let id = searchParams.get('id')
 
     // If not in URL params, try to get from request body
