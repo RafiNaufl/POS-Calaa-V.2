@@ -62,8 +62,6 @@ export async function GET(request: NextRequest) {
       { error: 'Failed to fetch products' },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }
 
@@ -146,8 +144,6 @@ export async function POST(request: NextRequest) {
       { error: `Failed to create product: ${error instanceof Error ? error.message : 'Unknown error'}` },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }
 
@@ -231,8 +227,6 @@ export async function PUT(request: NextRequest) {
       { error: 'Failed to update product' },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }
 
@@ -260,7 +254,5 @@ export async function DELETE(request: NextRequest) {
       { error: 'Failed to delete product' },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }
