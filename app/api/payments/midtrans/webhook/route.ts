@@ -4,7 +4,12 @@ import { prisma } from '@/lib/prisma';
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('Midtrans webhook received:', new Date().toISOString());
+    console.log('Request headers:', Object.fromEntries(request.headers.entries()));
+    
     const body = await request.json();
+    console.log('Webhook payload:', JSON.stringify(body, null, 2));
+    
     const {
       order_id,
       status_code,
@@ -25,11 +30,14 @@ export async function POST(request: NextRequest) {
 
     if (!isValidSignature) {
       console.error('Invalid signature for order:', order_id);
+      console.error('Expected signature verification failed');
       return NextResponse.json(
         { error: 'Invalid signature' },
         { status: 400 }
       );
     }
+    
+    console.log('Signature verified successfully for order:', order_id);
 
     // Get transaction status from Midtrans
     const statusResult = await checkTransactionStatus(order_id);
@@ -61,6 +69,26 @@ export async function POST(request: NextRequest) {
 
     // Update transaction in database
     try {
+      // Get current transaction status before update
+      const currentTransaction = await prisma.transaction.findUnique({
+        where: { id: order_id },
+        include: {
+          items: {
+            include: {
+              product: true
+            }
+          }
+        }
+      });
+
+      if (!currentTransaction) {
+        console.error('Transaction not found:', order_id);
+        return NextResponse.json(
+          { error: 'Transaction not found' },
+          { status: 404 }
+        );
+      }
+
       const updatedTransaction = await prisma.transaction.update({
         where: { id: order_id },
         data: {
@@ -79,8 +107,17 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      // Update product stock if payment is successful
-      if (paymentStatus === 'PAID') {
+      // Handle stock management based on payment status changes
+      const previousStatus = currentTransaction.paymentStatus;
+      const previousTransactionStatus = currentTransaction.status;
+      const currentStatus = paymentStatus;
+      
+      console.log(`Status change for ${order_id}: ${previousStatus}/${previousTransactionStatus} -> ${currentStatus}/${transactionStatus}`);
+      
+      // For Midtrans payments, stock is not reduced during transaction creation
+      // So we need to reduce stock when payment becomes successful
+      if (currentStatus === 'PAID' && previousStatus !== 'PAID') {
+        console.log('Payment successful, reducing stock for Midtrans transaction');
         for (const item of updatedTransaction.items) {
           if (item.product) {
             await prisma.product.update({
@@ -91,21 +128,48 @@ export async function POST(request: NextRequest) {
                 }
               }
             });
+            console.log(`Stock reduced for product ${item.product.name}: -${item.quantity}`);
           }
         }
       }
+      
+      // If payment fails, is cancelled, or expires, restore stock only if it was previously paid
+      else if ((currentStatus === 'FAILED' || transactionStatus === 'CANCELLED') && previousStatus === 'PAID') {
+        console.log('Payment failed/cancelled after being paid, restoring stock');
+        for (const item of updatedTransaction.items) {
+          if (item.product) {
+            await prisma.product.update({
+              where: { id: item.product.id },
+              data: {
+                stock: {
+                  increment: item.quantity
+                }
+              }
+            });
+            console.log(`Stock restored for product ${item.product.name}: +${item.quantity}`);
+          }
+        }
+      }
+      
+      // Log stock management decision
+      else {
+        console.log(`No stock changes needed. Previous: ${previousStatus}, Current: ${currentStatus}`);
+      }
 
       console.log(`Transaction ${order_id} updated with status: ${paymentStatus}/${transactionStatus}`);
+      console.log('Webhook processing completed successfully');
     } catch (dbError) {
       console.error('Database update error:', dbError);
+      console.error('Error details:', JSON.stringify(dbError, null, 2));
       // Still return success to Midtrans to avoid retries
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, message: 'Webhook processed successfully' });
   } catch (error) {
     console.error('Midtrans webhook error:', error);
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }

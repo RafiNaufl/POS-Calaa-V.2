@@ -322,7 +322,8 @@ export async function POST(request: NextRequest) {
     }
     
     // Update product stock for completed transactions
-    if (paymentMethod !== 'VIRTUAL_ACCOUNT' && paymentMethod !== 'BANK_TRANSFER') {
+    // Don't reduce stock for Midtrans payments as they will be handled by webhook
+    if (paymentMethod !== 'VIRTUAL_ACCOUNT' && paymentMethod !== 'BANK_TRANSFER' && paymentMethod !== 'MIDTRANS') {
       try {
         // Update stock for each product in the transaction
         for (const item of items) {
