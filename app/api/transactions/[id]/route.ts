@@ -127,6 +127,12 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         }
       }
     })
+    
+    // WhatsApp receipt sending is now handled manually through the transaction history page
+    // Automatic sending has been disabled to allow manual control
+    if (status === 'COMPLETED') {
+      console.log(`[TransactionUpdate] Transaction ${id} updated to COMPLETED. WhatsApp receipt can be sent manually from transaction history.`);
+    }
 
     return NextResponse.json(updatedTransaction)
   } catch (error) {

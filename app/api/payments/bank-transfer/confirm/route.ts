@@ -105,6 +105,10 @@ export async function POST(request: NextRequest) {
       }
     }
     
+    // WhatsApp receipt sending is now handled manually through the transaction history page
+    // Automatic sending has been disabled to allow manual control
+    console.log(`[BankTransfer] Bank transfer confirmed for transaction ${transactionId}. WhatsApp receipt can be sent manually from transaction history.`);
+    
     return NextResponse.json({
       success: true,
       message: 'Pembayaran berhasil dikonfirmasi',

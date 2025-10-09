@@ -346,6 +346,9 @@ export async function POST(request: NextRequest) {
     // Set transaction ID for logging
     transactionId = transaction.id
     
+    // WhatsApp receipt sending is now handled manually through the transaction history page
+    // Automatic sending has been disabled to allow manual control
+    console.log(`[Transaction] Transaction ${transaction.id} completed. WhatsApp receipt can be sent manually from transaction history.`);
 
     
     return NextResponse.json(transaction)

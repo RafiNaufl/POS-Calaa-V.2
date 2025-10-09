@@ -131,6 +131,10 @@ export async function POST(request: NextRequest) {
             console.log(`Stock reduced for product ${item.product.name}: -${item.quantity}`);
           }
         }
+
+        // WhatsApp receipt sending is now handled manually through the transaction history page
+        // Automatic sending has been disabled to allow manual control
+        console.log(`[Midtrans] Payment successful for transaction ${order_id}. WhatsApp receipt can be sent manually from transaction history.`);
       }
       
       // If payment fails, is cancelled, or expires, restore stock only if it was previously paid

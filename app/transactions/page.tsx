@@ -15,6 +15,7 @@ import {
   QuestionMarkCircleIcon,
   ArrowUturnLeftIcon,
   TrashIcon,
+  ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline'
 import ReceiptPreview from '../../components/ReceiptPreview'
 import Navbar from '@/components/Navbar'
@@ -62,6 +63,7 @@ export default function TransactionsPage() {
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [actionTransaction, setActionTransaction] = useState<Transaction | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
+  const [resendLoading, setResendLoading] = useState<string | null>(null)
 
   // Fetch transactions from API using SWR for real-time updates
   const fetcher = async (url: string) => {
@@ -378,6 +380,43 @@ export default function TransactionsPage() {
     }
   }
 
+  const resendWhatsAppReceipt = async (transaction: Transaction) => {
+    if (!transaction.customerPhone) {
+      alert('Nomor telepon pelanggan tidak tersedia untuk transaksi ini')
+      return
+    }
+
+    setResendLoading(transaction.id)
+    try {
+      const response = await fetch('/api/whatsapp/send-receipt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          transactionId: transaction.id,
+          phoneNumber: transaction.customerPhone,
+          format: 'detailed'
+        })
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        alert('Struk WhatsApp berhasil dikirim ulang!')
+        console.log('WhatsApp receipt resent successfully:', result)
+      } else {
+        const errorData = await response.json()
+        alert(`Gagal mengirim struk WhatsApp: ${errorData.error || 'Unknown error'}`)
+        console.error('Failed to resend WhatsApp receipt:', errorData)
+      }
+    } catch (error) {
+      console.error('Error resending WhatsApp receipt:', error)
+      alert('Terjadi kesalahan saat mengirim ulang struk WhatsApp')
+    } finally {
+      setResendLoading(null)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
@@ -579,6 +618,20 @@ export default function TransactionsPage() {
                           >
                             <PrinterIcon className="h-5 w-5" />
                           </button>
+                          {transaction.customerPhone && transaction.status === 'COMPLETED' && (
+                            <button
+                              onClick={() => resendWhatsAppReceipt(transaction)}
+                              className="text-purple-600 hover:text-purple-900 disabled:opacity-50"
+                              title="Kirim Ulang Struk WhatsApp"
+                              disabled={resendLoading === transaction.id}
+                            >
+                              {resendLoading === transaction.id ? (
+                                <div className="h-5 w-5 animate-spin rounded-full border-2 border-purple-600 border-t-transparent"></div>
+                              ) : (
+                                <ChatBubbleLeftRightIcon className="h-5 w-5" />
+                              )}
+                            </button>
+                          )}
                           {transaction.status === 'COMPLETED' && (
                             <button
                               onClick={() => handleRefund(transaction)}
@@ -758,6 +811,25 @@ export default function TransactionsPage() {
 
                 {/* Actions */}
                 <div className="flex justify-end space-x-3 pt-4">
+                  {selectedTransaction.customerPhone && selectedTransaction.status === 'COMPLETED' && (
+                    <button
+                      onClick={() => resendWhatsAppReceipt(selectedTransaction)}
+                      className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center disabled:opacity-50"
+                      disabled={resendLoading === selectedTransaction.id}
+                    >
+                      {resendLoading === selectedTransaction.id ? (
+                        <>
+                          <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent mr-2"></div>
+                          Mengirim...
+                        </>
+                      ) : (
+                        <>
+                          <ChatBubbleLeftRightIcon className="h-5 w-5 mr-2" />
+                          Kirim Ulang ke WhatsApp
+                        </>
+                      )}
+                    </button>
+                  )}
                   <button
                     onClick={() => printReceipt(selectedTransaction)}
                     className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"

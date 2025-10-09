@@ -31,10 +31,12 @@ export async function POST(request: NextRequest) {
         order_id: orderId,
         gross_amount: amount,
       },
-      customer_details: customerDetails || {
-        first_name: session.user?.name || 'Customer',
-        email: session.user?.email || '',
-      },
+      customer_details: customerDetails && (customerDetails.email || customerDetails.first_name || customerDetails.phone) 
+        ? customerDetails 
+        : {
+            first_name: session.user?.name || 'Customer',
+            email: session.user?.email || undefined,
+          },
       item_details: itemDetails || [],
       credit_card: {
         secure: true,

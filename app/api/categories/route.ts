@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     )
   }
+}  
 
 export async function POST(request: NextRequest) {
   
@@ -48,10 +49,19 @@ export async function POST(request: NextRequest) {
       )
     }
   }
+
+export async function PUT(request: NextRequest) {
   
   try {
     const body = await request.json()
     const { id, name, description } = body
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Category ID is required' },
+        { status: 400 }
+      )
+    }
 
     const category = await prisma.category.update({
       where: { id },
@@ -63,13 +73,15 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(category)
   } catch (error) {
-      console.error('Error updating category:', error)
-      return NextResponse.json(
-        { error: 'Failed to update category' },
-        { status: 500 }
-      )
-    }
+    console.error('Error updating category:', error)
+    return NextResponse.json(
+      { error: 'Failed to update category' },
+      { status: 500 }
+    )
   }
+}
+
+export async function DELETE(request: NextRequest) {
   
   try {
     // Check if ID is in URL params first
