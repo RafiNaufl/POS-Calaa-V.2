@@ -126,7 +126,6 @@ interface Transaction {
   total: number
   paymentMethod: string
   customerName?: string
-  customerPhone?: string
   createdAt: Date
   pointsUsed?: number
   pointsEarned?: number
@@ -210,7 +209,6 @@ export default function CashierPage() {
   const [showVoucherList, setShowVoucherList] = useState(false)
   const [showPromotionList, setShowPromotionList] = useState(false)
   const [showCashPaymentModal, setShowCashPaymentModal] = useState(false)
-  const [isSendingReceipt, setIsSendingReceipt] = useState(false)
 
 
   // Fetch data using SWR
@@ -803,7 +801,6 @@ export default function CashierPage() {
         total: totals.total,
         paymentMethod,
         customerName: customerName || undefined,
-        customerPhone: customerPhone || undefined,
         createdAt: new Date(),
         pointsUsed: pointsToUse,
         pointsEarned: totals.pointsEarned,
@@ -890,42 +887,6 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
     
     console.log(receiptContent)
     toast.success('Struk dicetak')
-  }
-
-  // Function to send WhatsApp receipt manually
-  const sendWhatsAppReceipt = async (transaction: any) => {
-    if (!transaction.customerPhone) {
-      toast.error('Nomor WhatsApp pelanggan tidak tersedia')
-      return
-    }
-
-    setIsSendingReceipt(true)
-    
-    try {
-      const response = await fetch('/api/whatsapp/send-receipt', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          transactionId: transaction.id,
-          phoneNumber: transaction.customerPhone,
-          receiptType: 'transaction'
-        })
-      })
-
-      if (response.ok) {
-        toast.success('Struk berhasil dikirim ke WhatsApp!')
-      } else {
-        const errorData = await response.json()
-        toast.error(errorData.message || 'Gagal mengirim struk ke WhatsApp')
-      }
-    } catch (error) {
-      console.error('Error sending WhatsApp receipt:', error)
-      toast.error('Terjadi kesalahan saat mengirim struk')
-    } finally {
-      setIsSendingReceipt(false)
-    }
   }
 
 
@@ -2067,17 +2028,6 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                     <PrinterIcon className="h-5 w-5 mr-2" />
                     Cetak Struk
                   </button>
-                  {/* WhatsApp Receipt Button */}
-                  {completedTransaction.customerPhone && (
-                    <button
-                      onClick={() => sendWhatsAppReceipt(completedTransaction)}
-                      disabled={isSendingReceipt}
-                      className="bg-green-500 hover:bg-green-600 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
-                    >
-                      <ChatBubbleLeftRightIcon className="h-5 w-5 mr-2" />
-                      {isSendingReceipt ? 'Mengirim...' : 'Kirim ke WhatsApp'}
-                    </button>
-                  )}
                   <button
                     onClick={() => setShowTransactionModal(false)}
                     className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors"
@@ -2187,17 +2137,6 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                   <PrinterIcon className="h-5 w-5 mr-2" />
                   Cetak Instruksi
                 </button>
-                {/* WhatsApp Receipt Button for Bank Transfer */}
-                {bankTransferTransaction?.customerPhone && (
-                  <button
-                    onClick={() => sendWhatsAppReceipt(bankTransferTransaction)}
-                    disabled={isSendingReceipt}
-                    className="bg-green-500 hover:bg-green-600 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
-                  >
-                    <ChatBubbleLeftRightIcon className="h-5 w-5 mr-2" />
-                    {isSendingReceipt ? 'Mengirim...' : 'Kirim ke WhatsApp'}
-                  </button>
-                )}
                 <button
                   onClick={async () => {
                     try {

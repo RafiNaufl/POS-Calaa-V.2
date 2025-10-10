@@ -16,7 +16,6 @@ import {
   DocumentTextIcon,
   CreditCardIcon,
   UsersIcon,
-  QuestionMarkCircleIcon,
   ChatBubbleLeftRightIcon
 } from '@heroicons/react/24/outline'
 
@@ -36,7 +35,6 @@ const navigation: NavItem[] = [
   { name: 'Laporan', href: '/reports', icon: DocumentTextIcon, roles: ['ADMIN', 'CASHIER'] },
   { name: 'Pengguna', href: '/users', icon: UsersIcon, roles: ['ADMIN'] },
   { name: 'WhatsApp', href: '/admin/whatsapp', icon: ChatBubbleLeftRightIcon, roles: ['ADMIN'] },
-  { name: 'Bantuan', href: '/cashier/help', icon: QuestionMarkCircleIcon, roles: ['ADMIN', 'CASHIER'] },
 ]
 
 export default function Navbar() {

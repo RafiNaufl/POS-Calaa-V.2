@@ -346,9 +346,33 @@ export async function POST(request: NextRequest) {
     // Set transaction ID for logging
     transactionId = transaction.id
     
-    // WhatsApp receipt sending is now handled manually through the transaction history page
-    // Automatic sending has been disabled to allow manual control
-    console.log(`[Transaction] Transaction ${transaction.id} completed. WhatsApp receipt can be sent manually from transaction history.`);
+    // Send WhatsApp receipt notification for completed transactions
+    if (transaction.status === 'COMPLETED' && transaction.customerPhone) {
+      try {
+        const whatsappResponse = await fetch(`${process.env.NEXTAUTH_URL}/api/whatsapp/send-receipt`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${request.headers.get('authorization')?.replace('Bearer ', '')}` || '',
+          },
+          body: JSON.stringify({
+            transactionId: transaction.id,
+            phoneNumber: transaction.customerPhone,
+            format: 'detailed'
+          })
+        });
+
+        if (whatsappResponse.ok) {
+          console.log(`WhatsApp receipt sent successfully for transaction ${transaction.id}`);
+        } else {
+          const errorData = await whatsappResponse.json();
+          console.warn(`Failed to send WhatsApp receipt for transaction ${transaction.id}:`, errorData);
+        }
+      } catch (whatsappError) {
+        console.warn(`WhatsApp notification failed for transaction ${transaction.id}:`, whatsappError);
+        // Don't fail the transaction if WhatsApp fails
+      }
+    }
 
     
     return NextResponse.json(transaction)
