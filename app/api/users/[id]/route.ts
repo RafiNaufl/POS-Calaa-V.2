@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { NextRequest, NextResponse } from 'next/server'
+import db from '@/models'
 import bcrypt from 'bcryptjs';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { getIsActive, setIsActive, removeStatus } from '@/lib/userStatusStore'
 
 // GET /api/users/[id] - Get a specific user
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
@@ -18,29 +19,17 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: params.id },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-        // Don't include password in the response
-      },
+    const user = await db.User.findByPk(params.id, {
+      attributes: ['id', 'name', 'email', 'role', 'createdAt', 'updatedAt'],
     });
     
-    // Add isActive property to the response
-    // This is a temporary solution until the database schema is updated
-    const userWithStatus = user ? { 
-      ...user, 
-      isActive: true
-    } : null;
-
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
+
+    const plain = (user as any).get({ plain: true })
+    const isActive = await getIsActive(plain.id)
+    const userWithStatus = { ...plain, isActive }
 
     return NextResponse.json(userWithStatus);
   } catch (error) {
@@ -67,9 +56,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     }
 
     // Check if user exists
-    const existingUser = await prisma.user.findUnique({
-      where: { id: params.id },
-    });
+    const existingUser = await db.User.findByPk(params.id);
 
     if (!existingUser) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
@@ -84,9 +71,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     if (name !== undefined) updateData.name = name;
     if (email !== undefined) {
       // Check if email is already in use by another user
-      if (email !== existingUser.email) {
-        const emailExists = await prisma.user.findUnique({
-          where: { email },
+      if (email !== (existingUser as any).email) {
+        const emailExists = await db.User.findOne({
+          where: { email }
         });
         if (emailExists) {
           return NextResponse.json(
@@ -106,29 +93,24 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       updateData.role = role;
     }
     
-    // Note: isActive field is not yet in the database schema
-    // We'll handle this in the UI for now
-
-    // Update user
-    const updatedUser = await prisma.user.update({
+    // Update user data in DB
+    await db.User.update(updateData, {
       where: { id: params.id },
-      data: updateData,
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      },
     });
     
-    // Add isActive property to the response
-    // This is a temporary solution until the database schema is updated
-    const userWithStatus = { 
-      ...updatedUser, 
-      isActive: isActive !== undefined ? isActive : true
-    };
+    // Persist isActive separately if provided
+    if (isActive !== undefined) {
+      await setIsActive(params.id, !!isActive)
+    }
+    
+    // Get updated user
+    const updatedUser = await db.User.findByPk(params.id, {
+      attributes: ['id', 'name', 'email', 'role', 'createdAt', 'updatedAt'],
+    });
+
+    const plain = (updatedUser as any).get({ plain: true })
+    const active = await getIsActive(params.id)
+    const userWithStatus = { ...plain, isActive: active }
 
     return NextResponse.json(userWithStatus);
   } catch (error) {
@@ -155,17 +137,15 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     }
 
     // Check if user exists
-    const existingUser = await prisma.user.findUnique({
-      where: { id: params.id },
-    });
+    const existingUser = await db.User.findByPk(params.id);
 
     if (!existingUser) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
     // Prevent deleting the last admin
-    if (existingUser.role === 'ADMIN') {
-      const adminCount = await prisma.user.count({
+    if ((existingUser as any).role === 'ADMIN') {
+      const adminCount = await db.User.count({
         where: { role: 'ADMIN' },
       });
 
@@ -178,9 +158,12 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     }
 
     // Delete user
-    await prisma.user.delete({
+    await db.User.destroy({
       where: { id: params.id },
     });
+
+    // Remove status persistence
+    await removeStatus(params.id)
 
     return NextResponse.json({ message: 'User deleted successfully' });
   } catch (error) {

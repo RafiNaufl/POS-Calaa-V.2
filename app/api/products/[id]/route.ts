@@ -1,22 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import db from '@/models'
+import { Op } from 'sequelize'
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  
   try {
-    const id = params.id
-    
-    if (!id) {
-      return NextResponse.json(
-        { error: 'Product ID is required' },
-        { status: 400 }
-      )
-    }
+    const { id } = params
 
-    const product = await prisma.product.findUnique({
-      where: { id },
-      include: {
-        category: true
-      }
+    const product = await db.Product.findByPk(id, {
+      include: [
+        {
+          model: db.Category,
+          as: 'category',
+          attributes: ['id', 'name']
+        }
+      ]
     })
 
     if (!product) {
@@ -33,74 +34,82 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       { error: 'Failed to fetch product' },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  
   try {
-    const id = params.id
+    const { id } = params
     const body = await request.json()
-    console.log('Received update data:', body) // Log the received data
-    const { name, productCode, price, costPrice, categoryId, stock, description, image, isActive, size, color } = body
-    
-    // Validate required fields
-    if (!name || !categoryId || !productCode || !size || !color) {
-      return NextResponse.json(
-        { error: 'Name, product code, category, size, and color are required fields' },
-        { status: 400 }
-      )
-    }
-    
-    // If productCode is provided, check if it already exists for another product
+    const { 
+      name, 
+      productCode, 
+      price, 
+      costPrice, 
+      stock, 
+      categoryId, 
+      description, 
+      size, 
+      color, 
+      image,
+      isActive 
+    } = body
+
+    // Check if product code already exists for another product
     if (productCode) {
-      const existingProduct = await prisma.product.findFirst({
-        where: {
-          productCode: productCode,
-          id: { not: id }
+      const existingProduct = await db.Product.findOne({
+        where: { 
+          productCode,
+          id: { [Op.ne]: id }
         }
       })
-      
+
       if (existingProduct) {
         return NextResponse.json(
-          { error: 'Product code already exists for another product' },
+          { error: 'Product code already exists' },
           { status: 400 }
         )
       }
     }
 
-    // Prepare update data with proper type handling
-    const updateData: any = {}
-    
-    // Add all fields in a specific order to avoid Prisma validation errors
-    // First add the category relationship if provided
-    if (categoryId !== undefined) {
-      updateData.category = {
-        connect: { id: categoryId }
+    const [updatedRowsCount] = await db.Product.update(
+      {
+        name,
+        productCode,
+        price: price ? parseFloat(price) : undefined,
+        costPrice: costPrice ? parseFloat(costPrice) : null,
+        stock: stock !== undefined ? parseInt(stock) : undefined,
+        categoryId,
+        description,
+        size,
+        color,
+        image,
+        isActive
+      },
+      {
+        where: { id }
       }
+    )
+
+    if (updatedRowsCount === 0) {
+      return NextResponse.json(
+        { error: 'Product not found' },
+        { status: 404 }
+      )
     }
-    
-    // Then add all other fields
-    if (name !== undefined) updateData.name = name
-    if (price !== undefined) updateData.price = parseFloat(price)
-    if (stock !== undefined) updateData.stock = parseInt(stock)
-    if (description !== undefined) updateData.description = description
-    if (size !== undefined) updateData.size = size
-    if (color !== undefined) updateData.color = color
-    if (productCode !== undefined) updateData.productCode = productCode
-    if (costPrice !== undefined) updateData.costPrice = parseFloat(costPrice)
-    if (image !== undefined) updateData.image = image
-    if (isActive !== undefined) updateData.isActive = isActive
-    
-    console.log('Update data being sent to Prisma:', updateData) // Log the processed data
-    
-    const product = await prisma.product.update({
-      where: { id },
-      data: updateData,
-      include: {
-        category: true
-      }
+
+    const product = await db.Product.findByPk(id, {
+      include: [
+        {
+          model: db.Category,
+          as: 'category',
+          attributes: ['id', 'name']
+        }
+      ]
     })
 
     return NextResponse.json(product)
@@ -110,25 +119,27 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       { error: 'Failed to update product' },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  
   try {
-    const id = params.id
+    const { id } = params
 
-    if (!id) {
-      return NextResponse.json(
-        { error: 'Product ID is required' },
-        { status: 400 }
-      )
-    }
-
-    await prisma.product.delete({
+    const deletedRowsCount = await db.Product.destroy({
       where: { id }
     })
+
+    if (deletedRowsCount === 0) {
+      return NextResponse.json(
+        { error: 'Product not found' },
+        { status: 404 }
+      )
+    }
 
     return NextResponse.json({ message: 'Product deleted successfully' })
   } catch (error) {
@@ -137,7 +148,5 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       { error: 'Failed to delete product' },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }

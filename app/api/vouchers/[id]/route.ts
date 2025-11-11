@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import db from '@/models'
 
 export async function GET(
   request: NextRequest,
@@ -16,37 +16,25 @@ export async function GET(
     // Check if user is admin or manager to see all details
     const isAdminOrManager = session.user.role === 'ADMIN' || session.user.role === 'MANAGER'
     
-    const voucher = await prisma.voucher.findUnique({
-      where: { id: params.id },
-      select: {
-        id: true,
-        code: true,
-        name: true,
-        description: true,
-        type: true,
-        value: true,
-        minPurchase: true,
-        maxDiscount: true,
-        usageLimit: true,
-        usageCount: true,
-        perUserLimit: true,
-        startDate: true,
-        endDate: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-        // Only include transactions data for admin/manager users
-        ...(isAdminOrManager && {
-          transactions: {
-            include: {
-              transaction: true,
-              user: true,
-              member: true
-            }
-          }
-        })
-      }
-    })
+    const voucher = await db.Voucher.findByPk(params.id, {
+      attributes: [
+        'id', 'code', 'name', 'description', 'type', 'value',
+        'minPurchase', 'maxDiscount', 'maxUses', 'usedCount',
+        'startDate', 'endDate', 'isActive',
+        'createdAt', 'updatedAt'
+      ],
+      ...(isAdminOrManager && {
+        include: [{
+          model: (db as any).VoucherUsage,
+          as: 'usages',
+          include: [
+            { model: (db as any).Transaction, as: 'transaction' },
+            { model: (db as any).User, as: 'user' },
+            { model: (db as any).Member, as: 'member' }
+          ]
+        }]
+      })
+    } as any)
 
     if (!voucher) {
       return NextResponse.json({ error: 'Voucher not found' }, { status: 404 })
@@ -89,13 +77,8 @@ export async function PUT(
     } = body
 
     // Check if voucher exists
-    const existingVoucher = await prisma.voucher.findUnique({
-      where: { id: params.id },
-      select: {
-        id: true,
-        code: true,
-        isActive: true
-      }
+    const existingVoucher = await db.Voucher.findByPk(params.id, {
+      attributes: ['id', 'code', 'isActive']
     })
 
     if (!existingVoucher) {
@@ -127,8 +110,8 @@ export async function PUT(
     }
 
     // Check if voucher code already exists (excluding current voucher)
-    if (code !== existingVoucher.code) {
-      const duplicateVoucher = await prisma.voucher.findUnique({
+    if (code !== (existingVoucher as any).code) {
+      const duplicateVoucher = await db.Voucher.findOne({
         where: { code }
       })
 
@@ -140,35 +123,32 @@ export async function PUT(
       }
     }
 
-    // Remove restrictedToProducts and restrictedToCategories from the data if they exist
-    const { restrictedToProducts, restrictedToCategories, ...safeVoucherData } = body;
-    
-    const updatedVoucher = await prisma.voucher.update({
-      where: { id: params.id },
-      data: {
-        ...safeVoucherData,
-        startDate: new Date(startDate),
-        endDate: new Date(endDate),
-        isActive: isActive !== undefined ? isActive : existingVoucher.isActive
-      },
-      select: {
-        id: true,
-        code: true,
-        name: true,
-        description: true,
-        type: true,
-        value: true,
-        minPurchase: true,
-        maxDiscount: true,
-        usageLimit: true,
-        usageCount: true,
-        perUserLimit: true,
-        startDate: true,
-        endDate: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true
-      }
+    // Whitelist only known voucher columns for update
+    const updateData: any = {
+      code,
+      name,
+      description,
+      type,
+      value,
+      minPurchase: minPurchase ? Number(minPurchase) : null,
+      maxDiscount: maxDiscount ? Number(maxDiscount) : null,
+      maxUses: body.maxUses ? Number(body.maxUses) : null,
+      startDate: new Date(startDate),
+      endDate: new Date(endDate),
+      isActive: isActive !== undefined ? isActive : (existingVoucher as any).isActive
+    }
+
+    await db.Voucher.update(updateData, {
+      where: { id: params.id }
+    })
+
+    const updatedVoucher = await db.Voucher.findByPk(params.id, {
+      attributes: [
+        'id', 'code', 'name', 'description', 'type', 'value',
+        'minPurchase', 'maxDiscount', 'maxUses', 'usedCount',
+        'startDate', 'endDate', 'isActive',
+        'createdAt', 'updatedAt'
+      ]
     })
 
     return NextResponse.json(updatedVoucher)
@@ -192,29 +172,22 @@ export async function DELETE(
     }
 
     // Check if voucher exists
-    const existingVoucher = await prisma.voucher.findUnique({
-      where: { id: params.id },
-      select: {
-        id: true,
-        code: true,
-        name: true,
-        transactions: true
-      }
-    })
+    const existingVoucher = await db.Voucher.findByPk(params.id, {
+      attributes: ['id', 'code', 'name'],
+      include: [{
+        model: (db as any).VoucherUsage,
+        as: 'usages'
+      }]
+     } as any)
 
-    if (!existingVoucher) {
-      return NextResponse.json({ error: 'Voucher not found' }, { status: 404 })
-    }
-
-    // Check if voucher has been used in transactions
-    if (existingVoucher.transactions.length > 0) {
+    if ((existingVoucher as any).usages && (existingVoucher as any).usages.length > 0) {
       return NextResponse.json(
-        { error: `Cannot delete voucher "${existingVoucher.name}" (${existingVoucher.code}) because it has been used in transactions` },
+        { error: `Cannot delete voucher "${(existingVoucher as any).name}" (${(existingVoucher as any).code}) because it has been used in transactions` },
         { status: 400 }
       )
     }
 
-    await prisma.voucher.delete({
+    await db.Voucher.destroy({
       where: { id: params.id }
     })
 

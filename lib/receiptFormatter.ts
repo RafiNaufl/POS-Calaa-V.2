@@ -1,4 +1,51 @@
-import { Transaction as PrismaTransaction, TransactionItem as PrismaTransactionItem, Product, Member, User } from '@prisma/client';
+// Custom type definitions for receipt formatting
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+  code?: string;
+  size?: string;
+  color?: string;
+}
+
+interface Member {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string;
+}
+
+interface User {
+  id: string;
+  name: string;
+}
+
+interface PrismaTransactionItem {
+  id: string;
+  transactionId: string;
+  productId: string;
+  quantity: number;
+  price: number;
+  subtotal: number;
+}
+
+interface PrismaTransaction {
+  id: string;
+  createdAt: Date;
+  total: number;
+  tax: number;
+  finalTotal: number;
+  paymentMethod: string;
+  status: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  pointsUsed?: number;
+  pointsEarned?: number;
+  voucherCode?: string;
+  voucherDiscount?: number;
+  promoDiscount?: number;
+}
 
 export interface TransactionWithRelations extends PrismaTransaction {
   items: (PrismaTransactionItem & {
@@ -60,7 +107,7 @@ export class ReceiptFormatter {
     const paymentMethods: { [key: string]: string } = {
       'CASH': 'Tunai',
       'CARD': 'Kartu',
-      'DIGITAL_WALLET': 'Dompet Digital',
+      'QRIS': 'QRIS',
       'VIRTUAL_ACCOUNT': 'Virtual Account',
       'CONVENIENCE_STORE': 'Convenience Store',
       'PAYLATER': 'PayLater',
@@ -88,6 +135,29 @@ export class ReceiptFormatter {
       minute: '2-digit',
       second: '2-digit'
     }).format(date);
+  }
+
+  // Ensure numeric values are parsed correctly from strings like "1.234,56" or "1,23" or currency strings
+  private static toNumber(value: unknown): number {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : 0;
+    }
+    if (typeof value === 'string') {
+      // Keep digits, dot, comma, minus; drop currency and spaces
+      const cleaned = value.replace(/[^\d.,-]/g, '');
+      let normalized = cleaned;
+      if (cleaned.includes('.') && cleaned.includes(',')) {
+        // e.g. 1.234,56 -> 1234.56
+        normalized = cleaned.replace(/\./g, '').replace(',', '.');
+      } else if (cleaned.includes(',') && !cleaned.includes('.')) {
+        // e.g. 1,23 -> 1.23
+        normalized = cleaned.replace(',', '.');
+      }
+      const num = parseFloat(normalized);
+      return Number.isFinite(num) ? num : 0;
+    }
+    // Handle null/undefined/other types
+    return 0;
   }
 
   public static formatReceiptForWhatsApp(transaction: Transaction): string {
@@ -127,40 +197,50 @@ export class ReceiptFormatter {
         receipt += `   🎨 Warna: ${item.color}\n`;
       }
       
-      receipt += `   🛒 Jumlah: ${item.quantity} × ${this.formatCurrency(item.price)} = *${this.formatCurrency(item.total)}*\n\n`;
+      const itemPrice = this.toNumber(item.price);
+      const itemTotal = this.toNumber(item.total);
+      const qty = this.toNumber(item.quantity);
+      receipt += `   🛒 Jumlah: ${qty} × ${this.formatCurrency(itemPrice)} = *${this.formatCurrency(itemTotal)}*\n\n`;
     });
 
     // Totals
     receipt += `💰 *RINCIAN PEMBAYARAN*\n`;
-    receipt += `Subtotal: ${this.formatCurrency(transaction.subtotal)}\n`;
+    const subtotal = this.toNumber(transaction.subtotal);
+    receipt += `Subtotal: ${this.formatCurrency(subtotal)}\n`;
     
-    if (transaction.tax && transaction.tax > 0) {
-      receipt += `Pajak: ${this.formatCurrency(transaction.tax)}\n`;
+    const tax = this.toNumber(transaction.tax);
+    if (tax > 0) {
+      receipt += `Pajak: ${this.formatCurrency(tax)}\n`;
     }
 
     // Discounts
-    if (transaction.pointsUsed && transaction.pointsUsed > 0) {
-      const pointDiscount = transaction.pointsUsed * 1000;
-      receipt += `🎯 Diskon Poin (${transaction.pointsUsed} poin): -${this.formatCurrency(pointDiscount)}\n`;
+    const pointsUsed = this.toNumber(transaction.pointsUsed);
+    if (pointsUsed > 0) {
+      const pointDiscount = pointsUsed * 1000;
+      receipt += `🎯 Diskon Poin (${pointsUsed} poin): -${this.formatCurrency(pointDiscount)}\n`;
     }
 
-    if (transaction.voucherCode && transaction.voucherDiscount && transaction.voucherDiscount > 0) {
-      receipt += `🎟️ Diskon Voucher (${transaction.voucherCode}): -${this.formatCurrency(transaction.voucherDiscount)}\n`;
+    const voucherDiscount = this.toNumber(transaction.voucherDiscount);
+    if (transaction.voucherCode && voucherDiscount > 0) {
+      receipt += `🎟️ Diskon Voucher (${transaction.voucherCode}): -${this.formatCurrency(voucherDiscount)}\n`;
     }
 
-    if (transaction.promotionDiscount && transaction.promotionDiscount > 0) {
-      receipt += `🎉 Diskon Promosi: -${this.formatCurrency(transaction.promotionDiscount)}\n`;
+    const promotionDiscount = this.toNumber(transaction.promotionDiscount);
+    if (promotionDiscount > 0) {
+      receipt += `🎉 Diskon Promosi: -${this.formatCurrency(promotionDiscount)}\n`;
     }
 
-    receipt += `\n💳 *TOTAL PEMBAYARAN: ${this.formatCurrency(transaction.finalTotal)}*\n`;
+    const finalTotal = this.toNumber(transaction.finalTotal);
+    receipt += `\n💳 *TOTAL PEMBAYARAN: ${this.formatCurrency(finalTotal)}*\n`;
 
     // Payment Info
     receipt += `💸 Metode Pembayaran: ${this.getPaymentMethodLabel(transaction.paymentMethod)}\n`;
     receipt += `📊 Status: ${this.getStatusLabel(transaction.status)}\n`;
 
     // Points earned
-    if (transaction.pointsEarned && transaction.pointsEarned > 0) {
-      receipt += `⭐ Poin Diperoleh: +${transaction.pointsEarned} poin\n`;
+    const pointsEarned = this.toNumber(transaction.pointsEarned);
+    if (pointsEarned > 0) {
+      receipt += `⭐ Poin Diperoleh: +${pointsEarned} poin\n`;
     }
 
     receipt += `\n👕 *WEAR CALAA*\n`;
@@ -186,10 +266,12 @@ export class ReceiptFormatter {
     
     receipt += `🛍️ *Pesanan:*\n`;
     transaction.items.forEach((item, index) => {
-      receipt += `${index + 1}. ${item.name} (${item.quantity}x) - ${this.formatCurrency(item.total)}\n`;
+      const itemTotal = this.toNumber(item.total);
+      receipt += `${index + 1}. ${item.name} (${item.quantity}x) - ${this.formatCurrency(itemTotal)}\n`;
     });
     
-    receipt += `\n💰 *Total: ${this.formatCurrency(transaction.finalTotal)}*\n`;
+    const finalTotal = this.toNumber(transaction.finalTotal);
+    receipt += `\n💰 *Total: ${this.formatCurrency(finalTotal)}*\n`;
     receipt += `💳 ${this.getPaymentMethodLabel(transaction.paymentMethod)}\n`;
     receipt += `📊 ${this.getStatusLabel(transaction.status)}\n\n`;
     receipt += `🙏 Terima kasih telah berbelanja di Wear Calaa!`;

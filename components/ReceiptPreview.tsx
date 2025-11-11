@@ -11,7 +11,7 @@ interface Transaction {
   subtotal: number
   tax: number
   total: number
-  paymentMethod: "CASH" | "CARD" | "DIGITAL_WALLET" | "VIRTUAL_ACCOUNT" | "CONVENIENCE_STORE" | "PAYLATER"
+  paymentMethod: "CASH" | "CARD" | "QRIS" | "VIRTUAL_ACCOUNT" | "CONVENIENCE_STORE" | "PAYLATER"
   status: "COMPLETED" | "CANCELLED" | "PENDING" | "REFUNDED"
   cashier: string
   customer?: string
@@ -50,8 +50,8 @@ const getPaymentMethodLabel = (method: string) => {
       return "Tunai"
     case "CARD":
       return "Kartu"
-    case "DIGITAL_WALLET":
-      return "Dompet Digital"
+    case "QRIS":
+      return "QRIS"
     case "VIRTUAL_ACCOUNT":
       return "Virtual Account"
     // E-Wallet case removed

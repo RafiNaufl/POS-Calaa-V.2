@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import db from '@/models'
+import { Op } from 'sequelize'
 
 interface CartItem {
   productId: string
@@ -31,34 +32,42 @@ export async function POST(request: NextRequest) {
 
     // Get active promotions
     const now = new Date()
-    const activePromotions = await prisma.promotion.findMany({
+    const activePromotions = await (db as any).Promotion.findAll({
       where: {
         isActive: true,
-        startDate: { lte: now },
-        endDate: { gte: now }
+        startDate: { [(Op as any).lte]: now },
+        endDate: { [(Op as any).gte]: now }
       },
-      include: {
-        productPromotions: {
-          include: {
-            product: true
-          }
+      include: [
+        {
+          model: (db as any).ProductPromotion,
+          as: 'productPromotions',
+          include: [
+            {
+              model: db.Product,
+              as: 'product'
+            }
+          ]
         },
-        categoryPromotions: {
-          include: {
-            category: true
-          }
+        {
+          model: (db as any).CategoryPromotion,
+          as: 'categoryPromotions',
+          include: [
+            {
+              model: db.Category,
+              as: 'category'
+            }
+          ]
         }
-      },
-      orderBy: {
-        createdAt: 'desc'
-      }
+      ],
+      order: [['createdAt', 'DESC']]
     })
 
     let totalDiscount = 0
     const appliedPromotions: any[] = []
 
     // Calculate discounts for each promotion
-    for (const promotion of activePromotions) {
+    for (const promotion of (activePromotions as any)) {
       let promotionDiscount = 0
       const applicableItems: CartItem[] = []
 
@@ -67,12 +76,12 @@ export async function POST(request: NextRequest) {
         let isEligible = false
 
         // Check if item's product is in promotion
-        if (promotion.productPromotions.some((pp: any) => pp.productId === item.productId)) {
+        if ((promotion as any).productPromotions.some((pp: any) => pp.productId === item.productId)) {
           isEligible = true
         }
 
         // Check if item's category is in promotion
-        if (promotion.categoryPromotions.some((cp: any) => cp.categoryId === item.categoryId)) {
+        if ((promotion as any).categoryPromotions.some((cp: any) => cp.categoryId === item.categoryId)) {
           isEligible = true
         }
 

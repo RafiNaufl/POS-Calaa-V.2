@@ -1,0 +1,388 @@
+{
+  "timestamp": "2025-10-20T07:36:17.340Z",
+  "duration": "0.076s",
+  "verification": {
+    "user": {
+      "prisma": 2,
+      "sequelize": 0,
+      "match": false
+    },
+    "category": {
+      "prisma": 4,
+      "sequelize": 4,
+      "match": true
+    },
+    "product": {
+      "prisma": 33,
+      "sequelize": 33,
+      "match": true
+    },
+    "transaction": {
+      "prisma": 0,
+      "sequelize": 0,
+      "match": true
+    },
+    "member": {
+      "prisma": 0,
+      "sequelize": 0,
+      "match": true
+    },
+    "voucher": {
+      "prisma": 0,
+      "sequelize": 0,
+      "match": true
+    }
+  },
+  "logs": [
+    {
+      "timestamp": "2025-10-20T07:36:17.264Z",
+      "type": "info",
+      "message": "🚀 Starting complete data migration..."
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.265Z",
+      "type": "info",
+      "message": "Starting data validation..."
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.288Z",
+      "type": "info",
+      "message": "Prisma connection successful"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.294Z",
+      "type": "info",
+      "message": "Sequelize connection successful"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.308Z",
+      "type": "info",
+      "message": "user: 2 records"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.308Z",
+      "type": "info",
+      "message": "category: 4 records"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.308Z",
+      "type": "info",
+      "message": "product: 33 records"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.309Z",
+      "type": "info",
+      "message": "transaction: 0 records"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.309Z",
+      "type": "info",
+      "message": "member: 0 records"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.310Z",
+      "type": "info",
+      "message": "voucher: 0 records"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.310Z",
+      "type": "info",
+      "message": "Migrating users..."
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.311Z",
+      "type": "error",
+      "message": "Error migrating user cmgytfjdf0000rgqbkg5jungz: Cannot read properties of undefined (reading 'create')"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.311Z",
+      "type": "error",
+      "message": "Error migrating user cmgytfjdi0001rgqbx5dgb3j3: Cannot read properties of undefined (reading 'create')"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.311Z",
+      "type": "success",
+      "message": "Users migration completed: 0 success, 2 errors"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.311Z",
+      "type": "info",
+      "message": "Migrating categories..."
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.318Z",
+      "type": "error",
+      "message": "Error migrating category cmgytfjdj0002rgqblfwnb83e: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.318Z",
+      "type": "error",
+      "message": "Error migrating category cmgytfjdj0003rgqbyzo06q4w: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.319Z",
+      "type": "error",
+      "message": "Error migrating category cmgytfjdk0005rgqbqszm46zz: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.319Z",
+      "type": "error",
+      "message": "Error migrating category cmgytfjdj0004rgqbaan9zgbx: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.319Z",
+      "type": "success",
+      "message": "Categories migration completed: 0 success, 4 errors"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.319Z",
+      "type": "info",
+      "message": "Migrating products..."
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.323Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjdw000brgqbwy1x6ac1: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.325Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjdz000nrgqbxzf99erm: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.325Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjdw000jrgqb6h5g5hsg: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.326Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfje0000rrgqbd7veq7ra: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.327Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfje0000trgqbfsj8pj6p: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.327Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfje1000vrgqbw7dxznlj: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.327Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfje1000xrgqb4p2a3nsc: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.328Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjdx000lrgqbboouxece: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.328Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfje20011rgqbcbpb3ros: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.328Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjdz000prgqbn24jfkeb: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.329Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfje40015rgqbmfarp4uv: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.329Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfje40017rgqbd84tya36: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.329Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfje2000zrgqbk0145f02: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.330Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfje30013rgqblvn4l9g7: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.330Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjdw000irgqbq7lw34uz: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.330Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjdw000drgqbkffqays5: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.330Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjdw000frgqbm1d4nnv7: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.331Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjdw0009rgqbq2lxj078: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.331Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjdw000crgqbhnckp4rk: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.331Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjfu0019rgqbh8mix1da: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.332Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjfv001brgqbrwlbyp13: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.332Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjfw001drgqbiurjpjjz: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.332Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjfx001frgqbjyaasrdb: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.333Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjfz001hrgqbe9958ar0: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.333Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjg0001jrgqbaavc51x9: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.333Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjg1001lrgqbmf45cadp: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.334Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjg2001nrgqb6tt7437b: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.334Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjg3001prgqbadbaaajb: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.334Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjg4001rrgqbfyg2zmt5: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.335Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjg5001trgqbv84v86io: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.335Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjg6001vrgqbh0ovktvk: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.335Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjg6001xrgqb2lerdq3l: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.336Z",
+      "type": "error",
+      "message": "Error migrating product cmgytfjg7001zrgqbf6yuv0w0: Validation error"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.336Z",
+      "type": "success",
+      "message": "Products migration completed: 0 success, 33 errors"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.336Z",
+      "type": "info",
+      "message": "Migrating members..."
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.336Z",
+      "type": "success",
+      "message": "Members migration completed: 0 success, 0 errors"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.336Z",
+      "type": "info",
+      "message": "Migrating vouchers..."
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.336Z",
+      "type": "success",
+      "message": "Vouchers migration completed: 0 success, 0 errors"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.336Z",
+      "type": "info",
+      "message": "Migrating transactions..."
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.337Z",
+      "type": "success",
+      "message": "Transactions migration completed: 0 success, 0 errors"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.337Z",
+      "type": "success",
+      "message": "All migrations committed successfully"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.337Z",
+      "type": "info",
+      "message": "Verifying migration results..."
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.337Z",
+      "type": "error",
+      "message": "❌ user: Prisma(2) != Sequelize(0)"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.338Z",
+      "type": "info",
+      "message": "✅ category: 4 records match"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.339Z",
+      "type": "info",
+      "message": "✅ product: 33 records match"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.340Z",
+      "type": "info",
+      "message": "✅ transaction: 0 records match"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.340Z",
+      "type": "info",
+      "message": "✅ member: 0 records match"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.340Z",
+      "type": "info",
+      "message": "✅ voucher: 0 records match"
+    },
+    {
+      "timestamp": "2025-10-20T07:36:17.340Z",
+      "type": "success",
+      "message": "🎉 Migration completed in 0.076s"
+    }
+  ]
+}

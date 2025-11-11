@@ -139,15 +139,15 @@ export default function MembersPage() {
           name: member.name || 'Unnamed Member',
           phone: member.phone || '',
           email: member.email || '',
-          points: member.points || 0,
-          totalSpent: member.totalSpent || 0,
-          transactionCount: member._count?.transactions || 0,
+          points: typeof member.points === 'number' ? member.points : parseInt(String(member.points ?? '0'), 10),
+          totalSpent: typeof member.totalSpent === 'number' ? member.totalSpent : parseFloat(String(member.totalSpent ?? '0')),
+          transactionCount: typeof member.transactionCount === 'number' ? member.transactionCount : parseInt(String(member.transactionCount ?? '0'), 10),
           createdAt: member.createdAt || new Date().toISOString(),
           lastVisit: member.lastVisit || null
         }))
         
         setMembers(validatedMembers)
-        setTotalPages(data.pagination?.totalPages || 1)
+        setTotalPages(data.pagination?.pages || 1)
       } else {
         console.error('Invalid data format received:', data)
         setMembers([])
@@ -291,12 +291,8 @@ export default function MembersPage() {
     if (!confirm(`Apakah Anda yakin ingin menghapus member "${name}"?`)) return
     
     try {
-      const response = await fetch('/api/members', {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ id })
+      const response = await fetch(`/api/members?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE'
       })
       
       if (!response.ok) {
@@ -311,21 +307,23 @@ export default function MembersPage() {
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <div className="flex items-center space-x-4 mb-4">
-          <button
-            onClick={() => router.back()}
-            className="flex items-center space-x-2 text-gray-600 hover:text-gray-800 transition-colors"
-          >
-            <ArrowLeftIcon className="w-5 h-5" />
-            <span>Kembali</span>
-          </button>
+    <div className="min-h-screen bg-gray-50">
+      <Navbar />
+      <div className="p-6">
+        <div className="mb-6">
+          <div className="flex items-center space-x-4 mb-4">
+            <button
+              onClick={() => router.back()}
+              className="flex items-center space-x-2 text-gray-600 hover:text-gray-800 transition-colors"
+            >
+              <ArrowLeftIcon className="w-5 h-5" />
+              <span>Kembali</span>
+            </button>
+          </div>
+          
+          <h1 className="text-2xl font-bold text-gray-900">Manajemen Member</h1>
+          <p className="text-gray-600">Kelola data member dan poin reward</p>
         </div>
-        
-        <h1 className="text-2xl font-bold text-gray-900">Manajemen Member</h1>
-        <p className="text-gray-600">Kelola data member dan poin reward</p>
-        
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
           <div className="bg-white p-4 rounded-lg shadow border">

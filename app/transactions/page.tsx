@@ -15,9 +15,11 @@ import {
   QuestionMarkCircleIcon,
   ArrowUturnLeftIcon,
   TrashIcon,
+  PaperAirplaneIcon,
 } from '@heroicons/react/24/outline'
 import ReceiptPreview from '../../components/ReceiptPreview'
 import Navbar from '@/components/Navbar'
+import { toast } from 'react-hot-toast'
 
 interface Transaction {
   id: string
@@ -30,7 +32,7 @@ interface Transaction {
   voucherDiscount?: number
   promoDiscount?: number
   voucherCode?: string
-  paymentMethod: 'CASH' | 'CARD' | 'DIGITAL_WALLET' | 'VIRTUAL_ACCOUNT' | 'CONVENIENCE_STORE' | 'PAYLATER'
+  paymentMethod: 'CASH' | 'CARD' | 'QRIS' | 'VIRTUAL_ACCOUNT' | 'CONVENIENCE_STORE' | 'PAYLATER'
   status: 'COMPLETED' | 'CANCELLED' | 'PENDING' | 'REFUNDED'
   cashier: string
   customer?: string
@@ -62,6 +64,7 @@ export default function TransactionsPage() {
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [actionTransaction, setActionTransaction] = useState<Transaction | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false)
 
   // Fetch transactions from API using SWR for real-time updates
   const fetcher = async (url: string) => {
@@ -287,8 +290,8 @@ export default function TransactionsPage() {
         return 'Tunai'
       case 'CARD':
         return 'Kartu'
-      case 'DIGITAL_WALLET':
-        return 'E-Wallet'
+      case 'QRIS':
+        return 'QRIS'
       case 'VIRTUAL_ACCOUNT':
         return 'Virtual Account'
       default:
@@ -306,6 +309,39 @@ export default function TransactionsPage() {
     setShowReceiptPreview(true)
   }
 
+  const sendReceiptWhatsApp = async (transaction: Transaction) => {
+    try {
+      if (sendingWhatsApp) {
+        toast('Sedang mengirim...', { icon: '⏳' })
+        return
+      }
+      setSendingWhatsApp(true)
+      let phone = transaction.customerPhone || ''
+      if (!phone) {
+        const input = window.prompt('Masukkan nomor WhatsApp pelanggan (contoh: 62812xxxxxxxx)')
+        if (!input) {
+          toast('Nomor WhatsApp tidak diisi', { icon: '⚠️' })
+          return
+        }
+        phone = input
+      }
+  
+      const res = await fetch('/api/whatsapp/send-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactionId: transaction.id, phoneNumber: phone, receiptType: 'detailed' }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error || 'Gagal mengirim struk via WhatsApp')
+      }
+      toast.success('Struk berhasil dikirim via WhatsApp')
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal mengirim struk via WhatsApp')
+    } finally {
+      setSendingWhatsApp(false)
+    }
+  }
   const handlePrintComplete = () => {
     setShowReceiptPreview(false)
     setReceiptTransaction(null)
@@ -378,6 +414,31 @@ export default function TransactionsPage() {
     }
   }
 
+  const handleConfirmCardPayment = async (transaction: Transaction) => {
+    setActionTransaction(transaction)
+    setActionLoading(true)
+    try {
+      const response = await fetch('/api/payments/card/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactionId: transaction.id })
+      })
+      if (response.ok) {
+        mutate()
+        alert('Pembayaran Kartu dikonfirmasi dan stok dikurangi')
+      } else {
+        const data = await response.json().catch(() => ({}))
+        alert(data?.message || 'Gagal mengkonfirmasi pembayaran Kartu')
+      }
+    } catch (error) {
+      console.error('Error confirming card payment:', error)
+      alert('Terjadi kesalahan saat mengkonfirmasi pembayaran Kartu')
+    } finally {
+      setActionLoading(false)
+      setActionTransaction(null)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
@@ -433,7 +494,7 @@ export default function TransactionsPage() {
               <option value="ALL">Semua Pembayaran</option>
               <option value="CASH">Tunai</option>
               <option value="CARD">Kartu</option>
-              <option value="DIGITAL_WALLET">E-Wallet</option>
+              <option value="QRIS">QRIS</option>
               <option value="VIRTUAL_ACCOUNT">Virtual Account</option>
             </select>
 
@@ -595,6 +656,18 @@ export default function TransactionsPage() {
                               title="Batalkan Transaksi"
                             >
                               <TrashIcon className="h-5 w-5" />
+                            </button>
+                          )}
+                          {transaction.paymentMethod === 'CARD' && transaction.status === 'PENDING' && (
+                            <button
+                              onClick={() => handleConfirmCardPayment(transaction)}
+                              className="text-teal-600 hover:text-teal-900"
+                              title="Konfirmasi Pembayaran"
+                            >
+                              {/* Check icon */}
+                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                                <path fillRule="evenodd" d="M2.25 12a9.75 9.75 0 1119.5 0 9.75 9.75 0 01-19.5 0zm14.03-2.28a.75.75 0 00-1.06-1.06l-4.72 4.72-2.22-2.22a.75.75 0 10-1.06 1.06l2.75 2.75c.3.3.78.3 1.06 0l5.25-5.25z" clipRule="evenodd" />
+                              </svg>
                             </button>
                           )}
                         </div>
@@ -764,6 +837,13 @@ export default function TransactionsPage() {
                   >
                     <PrinterIcon className="h-5 w-5 mr-2" />
                     Cetak Struk
+                  </button>
+                  <button
+                    onClick={() => sendReceiptWhatsApp(selectedTransaction)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
+                  >
+                    <PaperAirplaneIcon className="h-5 w-5 mr-2" />
+                    Kirim ulang ke WhatsApp
                   </button>
                   <button
                     onClick={() => setShowModal(false)}

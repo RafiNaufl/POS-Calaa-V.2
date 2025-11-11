@@ -104,3 +104,13 @@ ehthumbs.db
 Thumbs.db
 .vercel
 .env*.local
+
+# Local databases and backups
+database/*.db
+backups/
+
+# WhatsApp auth sessions
+.wwebjs_auth/
+
+# Prisma dev databases (broader match than dev.db*)
+prisma/*.db*

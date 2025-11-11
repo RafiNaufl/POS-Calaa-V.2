@@ -1,35 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
-import { Prisma } from '@prisma/client'
-
-// Helper function to retry database operations
-async function withRetry<T>(operation: () => Promise<T>, maxRetries = 3, delay = 1000): Promise<T> {
-  let lastError;
-  
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await operation();
-    } catch (error) {
-      lastError = error;
-      
-      // Only retry on connection errors
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P5010') {
-        console.log(`Attempt ${attempt} failed, retrying in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        // Increase delay for next attempt (exponential backoff)
-        delay *= 2;
-      } else {
-        // Don't retry on other errors
-        throw error;
-      }
-    }
-  }
-  
-  // If we've exhausted all retries, throw the last error
-  throw lastError;
-}
+const db = require('@/models')
 
 // GET - Mendapatkan detail biaya operasional berdasarkan ID
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
@@ -42,12 +14,13 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const id = params.id
     
     // Dapatkan detail biaya operasional
-    const expense = await withRetry(() => prisma.$queryRaw`
-      SELECT oe.*, u.name as user_name
-      FROM "operational_expense" oe
-      JOIN "User" u ON oe."createdBy" = u.id
-      WHERE oe.id = ${id}
-    `)
+    const expense = await db.OperationalExpense.findByPk(id, {
+      include: [{
+        model: db.User,
+        as: 'creator',
+        attributes: ['name']
+      }]
+    })
     
     if (!expense) {
       return NextResponse.json({ error: 'Operational expense not found' }, { status: 404 })
@@ -84,27 +57,24 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
     
     // Periksa apakah biaya operasional ada
-    const existingExpense = await withRetry(() => prisma.$queryRaw`
-      SELECT * FROM "operational_expense" WHERE id = ${id}
-    `)
+    const existingExpense = await db.OperationalExpense.findByPk(id)
     
     if (!existingExpense) {
       return NextResponse.json({ error: 'Operational expense not found' }, { status: 404 })
     }
     
     // Perbarui biaya operasional
-    const updatedExpense = await withRetry(() => prisma.$executeRaw`
-      UPDATE "operational_expense"
-      SET name = ${data.name},
-          amount = ${parseFloat(data.amount)},
-          category = ${data.category},
-          date = ${new Date(data.date)},
-          description = ${data.description},
-          receipt = ${data.receipt},
-          "updatedAt" = ${new Date()}
-      WHERE id = ${id}
-      RETURNING *
-    `)
+    const updatedExpense = await db.OperationalExpense.update({
+      name: data.name,
+      amount: parseFloat(data.amount),
+      category: data.category,
+      date: new Date(data.date),
+      description: data.description,
+      receipt: data.receipt
+    }, {
+      where: { id },
+      returning: true
+    })
     
     return NextResponse.json(updatedExpense, { status: 200 })
   } catch (error) {
@@ -129,18 +99,14 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     const id = params.id
     
     // Periksa apakah biaya operasional ada
-    const existingExpense = await withRetry(() => prisma.$queryRaw`
-      SELECT * FROM "operational_expense" WHERE id = ${id}
-    `)
+    const existingExpense = await db.OperationalExpense.findByPk(id)
     
     if (!existingExpense) {
       return NextResponse.json({ error: 'Operational expense not found' }, { status: 404 })
     }
     
     // Hapus biaya operasional
-    await withRetry(() => prisma.$executeRaw`
-      DELETE FROM "operational_expense" WHERE id = ${id}
-    `)
+    await db.OperationalExpense.destroy({ where: { id } })
     
     return NextResponse.json({ message: 'Operational expense deleted successfully' }, { status: 200 })
   } catch (error) {

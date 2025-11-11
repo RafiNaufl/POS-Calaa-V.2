@@ -1,0 +1,13 @@
+{
+  "name": "prisma-sequelize-migration",
+  "version": "1.0.0",
+  "description": "Migration scripts from Prisma to Sequelize",
+  "scripts": {
+    "migrate:convert": "node migration-scripts/prisma-to-sequelize-converter.js",
+    "migrate:schema": "node migration-scripts/schema-sync.js sync",
+    "migrate:data": "node migration-scripts/data-migration.js migrate",
+    "migrate:verify": "node migration-scripts/data-migration.js verify",
+    "migrate:rollback": "node migration-scripts/data-migration.js rollback",
+    "migrate:full": "npm run migrate:convert && npm run migrate:schema && npm run migrate:data && npm run migrate:verify"
+  }
+}

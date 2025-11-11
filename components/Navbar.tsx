@@ -33,7 +33,7 @@ const navigation: NavItem[] = [
   { name: 'Member', href: '/members', icon: UserIcon, roles: ['CASHIER'] },
   { name: 'Transaksi', href: '/transactions', icon: ShoppingCartIcon, roles: ['ADMIN', 'CASHIER'] },
   { name: 'Laporan', href: '/reports', icon: DocumentTextIcon, roles: ['ADMIN', 'CASHIER'] },
-  { name: 'Pengguna', href: '/users', icon: UsersIcon, roles: ['ADMIN'] },
+
   { name: 'WhatsApp', href: '/admin/whatsapp', icon: ChatBubbleLeftRightIcon, roles: ['ADMIN'] },
 ]
 

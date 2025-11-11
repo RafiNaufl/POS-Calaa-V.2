@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { NextRequest, NextResponse } from 'next/server'
+import db from '@/models'
 import bcrypt from 'bcryptjs';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { getIsActive, setIsActive } from '@/lib/userStatusStore'
 
 // GET /api/users - Get all users
 export async function GET(request: NextRequest) {
@@ -18,28 +19,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-        // Don't include password in the response
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
+    const users = await db.User.findAll({
+      attributes: ['id', 'name', 'email', 'role', 'createdAt', 'updatedAt'],
+      order: [['createdAt', 'DESC']],
     });
     
-    // Add isActive property to each user
-    // This is a temporary solution until the database schema is updated
-    const usersWithStatus = users.map(user => ({
-      ...user,
-      isActive: true // Default all users to active for now
-    }));
-    
+    // Return plain users with persistent isActive
+    const usersWithStatus = await Promise.all(users.map(async (user: any) => {
+      const plain = user.get({ plain: true })
+      const isActive = await getIsActive(plain.id)
+      return { ...plain, isActive }
+    }))
 
     return NextResponse.json(usersWithStatus);
   } catch (error) {
@@ -67,8 +57,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { name, email, password, role } = body;
-    // Note: isActive is received from the request but not stored in the database yet
-    const isActive = body.isActive !== undefined ? body.isActive : true;
+    const isActive = body.isActive !== undefined ? !!body.isActive : true;
 
     // Validate input
     if (!name || !email || !password || !role) {
@@ -79,7 +68,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if email already exists
-    const existingUser = await prisma.user.findUnique({
+    const existingUser = await db.User.findOne({
       where: { email },
     });
 
@@ -94,30 +83,18 @@ export async function POST(request: NextRequest) {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create user
-    const newUser = await prisma.user.create({
-      data: {
-        name,
-        email,
-        password: hashedPassword,
-        role,
-        // Remove lastLogin from data
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+    const newUser = await db.User.create({
+      name,
+      email,
+      password: hashedPassword,
+      role,
     });
     
-    // Add isActive property to the response
-    // This is a temporary solution until the database schema is updated
-    const newUserWithStatus = {
-      ...newUser,
-      isActive: isActive
-    };
+    // Persist isActive separately
+    await setIsActive((newUser as any).id, isActive)
+
+    const plain = (newUser as any).get({ plain: true })
+    const newUserWithStatus = { ...plain, isActive }
 
     return NextResponse.json(newUserWithStatus, { status: 201 });
   } catch (error) {

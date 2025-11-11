@@ -224,65 +224,56 @@ export async function POST(request: NextRequest) {
       try {
         // Calculate points earned (1 point per 1000 rupiah spent)
         const pointsEarned = Math.floor(parseFloat(total.toString()) / 1000)
-        
-        // Update member points and total spent
-        const memberUpdateData: any = {
-          totalSpent: {
-            increment: parseFloat(total.toString())
+
+        // Compute points delta including usage
+        const pointsDelta = (pointsEarned || 0) - (pointsUsed || 0)
+
+        // Increment numeric fields using proper Sequelize APIs
+        await db.Member.increment(
+          {
+            points: pointsDelta,
+            totalSpent: parseFloat(total.toString())
           },
-          lastVisit: new Date()
-        }
-        
-        // If points were used, decrement them
-        if (pointsUsed > 0) {
-          memberUpdateData.points = {
-            increment: pointsEarned - pointsUsed
+          {
+            where: { id: memberId }
           }
-        } else {
-          memberUpdateData.points = {
-            increment: pointsEarned
-          }
-        }
-        
-        await db.Member.update(memberUpdateData, {
-          where: { id: memberId }
-        })
-        
+        )
+
+        // Update last visit timestamp
+        await db.Member.update(
+          { lastVisit: new Date() },
+          { where: { id: memberId } }
+        )
+
         // Create point history record for points earned
         if (pointsEarned > 0) {
           await db.PointHistory.create({
-            data: {
-              memberId: memberId,
-              points: pointsEarned,
-              type: 'EARNED',
-              description: `Poin dari transaksi #${transaction.id}`,
-              transactionId: transaction.id
-            }
+            memberId: memberId,
+            points: pointsEarned,
+            type: 'EARNED',
+            description: `Poin dari transaksi #${transaction.id}`,
+            transactionId: transaction.id
           })
         }
-        
+
         // Create point history record for points used
-        if (pointsUsed > 0) {
+        if ((pointsUsed || 0) > 0) {
           await db.PointHistory.create({
-            data: {
-              memberId: memberId,
-              points: -pointsUsed,
-              type: 'USED',
-              description: `Poin digunakan untuk transaksi #${transaction.id}`,
-              transactionId: transaction.id
-            }
+            memberId: memberId,
+            points: -pointsUsed!,
+            type: 'USED',
+            description: `Poin digunakan untuk transaksi #${transaction.id}`,
+            transactionId: transaction.id
           })
         }
-        
+
         // Update transaction with points earned
-        await db.Transaction.update({
-          where: { id: transaction.id },
-          data: {
-            pointsEarned: pointsEarned
-          }
-        })
-        
-        console.log(`Member ${memberId} updated: +${pointsEarned} points earned, ${pointsUsed} points used, +${total} total spent`)
+        await db.Transaction.update(
+          { pointsEarned },
+          { where: { id: transaction.id } }
+        )
+
+        console.log(`Member ${memberId} updated: +${pointsEarned} points earned, ${pointsUsed || 0} points used, +${total} total spent`)
       } catch (error) {
         console.error('Error updating member data:', error)
         // Continue anyway since the transaction was created

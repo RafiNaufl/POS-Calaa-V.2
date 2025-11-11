@@ -1,35 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
-import { Prisma } from '@prisma/client'
-import cuid from 'cuid'
+const db = require('@/models')
+import { Op } from 'sequelize'
 
-// Helper function to retry database operations
-async function withRetry<T>(operation: () => Promise<T>, maxRetries = 3, delay = 1000): Promise<T> {
-  let lastError;
-  
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+// Safe guard: ensure table exists in dev environments
+async function ensureOperationalExpenseTable() {
+  try {
+    // Try describe table; if fails, create it
+    await db.sequelize.getQueryInterface().describeTable('operational_expense')
+  } catch (error) {
     try {
-      return await operation();
-    } catch (error) {
-      lastError = error;
-      
-      // Only retry on connection errors
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P5010') {
-        console.log(`Attempt ${attempt} failed, retrying in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        // Increase delay for next attempt (exponential backoff)
-        delay *= 2;
-      } else {
-        // Don't retry on other errors
-        throw error;
-      }
+      await db.OperationalExpense.sync()
+      console.log('operational_expense table created via sync')
+    } catch (syncError) {
+      console.error('Failed to create operational_expense table:', syncError)
     }
   }
-  
-  // If we've exhausted all retries, throw the last error
-  throw lastError;
 }
 
 // GET - Mendapatkan daftar biaya operasional dengan filter
@@ -38,6 +25,8 @@ export async function GET(request: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  await ensureOperationalExpenseTable()
   
   try {
     const searchParams = request.nextUrl.searchParams
@@ -46,58 +35,54 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category') || undefined
     
     // Buat filter berdasarkan parameter yang diberikan
-    const filter: any = {}
+    const whereClause: any = {}
     
     if (startDate || endDate) {
-      filter.date = {}
-      if (startDate) filter.date.gte = startDate
-      if (endDate) filter.date.lte = endDate
+      whereClause.date = {}
+      if (startDate) whereClause.date[Op.gte] = startDate
+      if (endDate) whereClause.date[Op.lte] = endDate
     }
     
     if (category) {
-      filter.category = category
+      whereClause.category = category
     }
     
-    // Dapatkan data biaya operasional menggunakan raw query karena model name berbeda
-    const expenses = await withRetry(() => prisma.$queryRaw`
-      SELECT oe.*, u.name as user_name
-      FROM "operational_expense" oe
-      LEFT JOIN "User" u ON oe."createdBy" = u.id
-      WHERE ${Object.keys(filter).length > 0 ? Prisma.sql`
-        ${startDate ? Prisma.sql`oe.date >= ${startDate}` : Prisma.sql``}
-        ${startDate && endDate ? Prisma.sql` AND ` : Prisma.sql``}
-        ${endDate ? Prisma.sql`oe.date <= ${endDate}` : Prisma.sql``}
-        ${(startDate || endDate) && category ? Prisma.sql` AND ` : Prisma.sql``}
-        ${category ? Prisma.sql`oe.category = ${category}` : Prisma.sql``}
-      ` : Prisma.sql`1=1`}
-      ORDER BY oe.date DESC
-    `);
+    // Dapatkan data biaya operasional dengan join ke User
+    const expenses = await db.OperationalExpense.findAll({
+      where: whereClause,
+      include: [{
+        model: db.User,
+        as: 'creator',
+        attributes: ['name']
+      }],
+      order: [['date', 'DESC']]
+    })
     
-    // Hasil query sudah dalam format yang diharapkan
-    const transformedExpenses = expenses as Array<{
-      id: string;
-      name: string;
-      amount: number;
-      category: string;
-      date: Date;
-      description: string | null;
-      receipt: string | null;
-      createdBy: string;
-      createdAt: Date;
-      updatedAt: Date;
-      user_name: string;
-    }>;
+    // Transform data untuk mencocokkan format yang diharapkan
+    const transformedExpenses = expenses.map((expense: any) => ({
+      id: expense.id,
+      name: expense.name,
+      amount: expense.amount,
+      category: expense.category,
+      date: expense.date,
+      description: expense.description,
+      receipt: expense.receipt,
+      createdBy: expense.createdBy,
+      createdAt: expense.createdAt,
+      updatedAt: expense.updatedAt,
+      user_name: expense.creator?.name || null
+    }))
     
     // Hitung total biaya
     const totalAmount = transformedExpenses.reduce((sum: number, expense: { amount: number }) => sum + expense.amount, 0)
     
     // Kelompokkan biaya berdasarkan kategori
     const expensesByCategory: Record<string, number> = {}
-    transformedExpenses.forEach((expense: { name: string; amount: number }) => {
-      if (!expensesByCategory[expense.name]) {
-        expensesByCategory[expense.name] = 0
+    transformedExpenses.forEach((expense: { category: string; amount: number }) => {
+      if (!expensesByCategory[expense.category]) {
+        expensesByCategory[expense.category] = 0
       }
-      expensesByCategory[expense.name] += expense.amount
+      expensesByCategory[expense.category] += expense.amount
     })
     
     return NextResponse.json({
@@ -123,6 +108,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden: Only admins can add operational expenses' }, { status: 403 })
   }
   
+  await ensureOperationalExpenseTable()
+
   try {
     const data = await request.json()
     
@@ -133,8 +120,16 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
     
-    // Buat biaya operasional baru menggunakan raw query
-    const newExpense = {
+    // Verifikasi bahwa user ID valid
+    const userExists = await db.User.findByPk(session.user.id)
+    
+    if (!userExists) {
+      console.error('User not found:', session.user.id)
+      return NextResponse.json({ error: 'Invalid user ID' }, { status: 400 })
+    }
+    
+    // Buat biaya operasional baru
+    const expense = await db.OperationalExpense.create({
       name: data.name,
       amount: parseFloat(data.amount),
       category: data.category,
@@ -142,43 +137,7 @@ export async function POST(request: NextRequest) {
       description: data.description || null,
       receipt: data.receipt || null,
       createdBy: session.user.id
-    }
-    
-    // Gunakan Prisma query builder untuk insert
-    // Pertama, verifikasi bahwa user ID valid
-    const userExists = await prisma.user.findUnique({
-      where: {
-        id: session.user.id
-      },
-      select: { id: true }
-    });
-    
-    if (!userExists) {
-      console.error('User not found:', session.user.id);
-      return NextResponse.json({ error: 'Invalid user ID' }, { status: 400 });
-    }
-    
-    // Gunakan cuid untuk menghasilkan ID yang valid
-    
-    // Gunakan raw query untuk membuat expense baru dengan ID yang valid
-    const validId = cuid();
-    const expense = await withRetry(() => prisma.$queryRaw`
-      INSERT INTO "operational_expense" (
-        id, name, amount, category, date, description, receipt, "createdBy", "createdAt", "updatedAt"
-      ) VALUES (
-        ${validId},
-        ${newExpense.name},
-        ${newExpense.amount},
-        ${newExpense.category},
-        ${newExpense.date},
-        ${newExpense.description},
-        ${newExpense.receipt},
-        ${session.user.id},
-        ${new Date()},
-        ${new Date()}
-      )
-      RETURNING *
-    `)
+    })
     
     return NextResponse.json(expense, { status: 201 })
   } catch (error) {

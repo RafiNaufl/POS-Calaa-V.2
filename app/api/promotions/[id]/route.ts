@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
-
+const db = require('@/models')
 
 export async function GET(
   request: NextRequest,
@@ -14,20 +13,25 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const promotion = await prisma.promotion.findUnique({
-      where: { id: params.id },
-      include: {
-        productPromotions: {
-          include: {
-            product: true
-          }
+    const promotion = await db.Promotion.findByPk(params.id, {
+      include: [
+        {
+          model: db.ProductPromotion,
+          as: 'productPromotions',
+          include: [{
+            model: db.Product,
+            as: 'product'
+          }]
         },
-        categoryPromotions: {
-          include: {
-            category: true
-          }
+        {
+          model: db.CategoryPromotion,
+          as: 'categoryPromotions',
+          include: [{
+            model: db.Category,
+            as: 'category'
+          }]
         }
-      }
+      ]
     })
 
     if (!promotion) {
@@ -72,12 +76,11 @@ export async function PUT(
     } = body
 
     // Check if promotion exists
-    const existingPromotion = await prisma.promotion.findUnique({
-      where: { id: params.id },
-      include: {
-        productPromotions: true,
-        categoryPromotions: true
-      }
+    const existingPromotion = await db.Promotion.findByPk(params.id, {
+      include: [
+        { model: db.ProductPromotion, as: 'productPromotions' },
+        { model: db.CategoryPromotion, as: 'categoryPromotions' }
+      ]
     })
 
     if (!existingPromotion) {
@@ -132,72 +135,82 @@ export async function PUT(
     }
 
     // Update promotion using transaction
-    const updatedPromotion = await prisma.$transaction(async (tx) => {
+    const updatedPromotion = await (db.sequelize as any).transaction(async (t: any) => {
       // Delete existing product and category associations
-      await tx.productPromotion.deleteMany({
-        where: { promotionId: params.id }
+      await db.ProductPromotion.destroy({
+        where: { promotionId: params.id },
+        transaction: t
       })
       
-      await tx.categoryPromotion.deleteMany({
-        where: { promotionId: params.id }
+      await db.CategoryPromotion.destroy({
+        where: { promotionId: params.id },
+        transaction: t
       })
 
       // Update promotion
-      const promotion = await tx.promotion.update({
+      const promotion = await db.Promotion.update({
+        name: body.name,
+        description: body.description,
+        type: body.type,
+        discountValue: body.discountValue,
+        discountType: body.discountType,
+        minQuantity: body.minQuantity,
+        buyQuantity: body.buyQuantity,
+        getQuantity: body.getQuantity,
+        startDate: body.startDate ? new Date(body.startDate) : new Date(),
+        endDate: body.endDate ? new Date(body.endDate) : new Date(),
+        isActive: body.isActive
+      }, {
         where: { id: params.id },
-        data: {
-          name: body.name,
-          description: body.description,
-          type: body.type,
-          discountValue: body.discountValue,
-          discountType: body.discountType, // Menambahkan discountType karena diperlukan oleh TypeScript
-          minQuantity: body.minQuantity,
-          buyQuantity: body.buyQuantity,
-          getQuantity: body.getQuantity,
-          startDate: body.startDate ? new Date(body.startDate) : new Date(),
-          endDate: body.endDate ? new Date(body.endDate) : new Date(),
-          isActive: body.isActive
-        }
+        transaction: t,
+        returning: true
       })
 
       // Create new product associations
       if (productIds && productIds.length > 0) {
-        await tx.productPromotion.createMany({
-          data: productIds.map((productId: string) => ({
+        await db.ProductPromotion.bulkCreate(
+          productIds.map((productId: string) => ({
             promotionId: params.id,
             productId
-          }))
-        })
+          })),
+          { transaction: t }
+        )
       }
 
       // Create new category associations
       if (categoryIds && categoryIds.length > 0) {
-        await tx.categoryPromotion.createMany({
-          data: categoryIds.map((categoryId: string) => ({
+        await db.CategoryPromotion.bulkCreate(
+          categoryIds.map((categoryId: string) => ({
             promotionId: params.id,
             categoryId
-          }))
-        })
+          })),
+          { transaction: t }
+        )
       }
 
       return promotion
     })
 
     // Fetch updated promotion with associations
-    const promotionWithAssociations = await prisma.promotion.findUnique({
-      where: { id: params.id },
-      include: {
-        productPromotions: {
-          include: {
-            product: true
-          }
+    const promotionWithAssociations = await db.Promotion.findByPk(params.id, {
+      include: [
+        {
+          model: db.ProductPromotion,
+          as: 'productPromotions',
+          include: [{
+            model: db.Product,
+            as: 'product'
+          }]
         },
-        categoryPromotions: {
-          include: {
-            category: true
-          }
+        {
+          model: db.CategoryPromotion,
+          as: 'categoryPromotions',
+          include: [{
+            model: db.Category,
+            as: 'category'
+          }]
         }
-      }
+      ]
     })
 
     return NextResponse.json(promotionWithAssociations)
@@ -221,12 +234,11 @@ export async function DELETE(
     }
 
     // Check if promotion exists
-    const existingPromotion = await prisma.promotion.findUnique({
-      where: { id: params.id },
-      include: {
-        productPromotions: true,
-        categoryPromotions: true
-      }
+    const existingPromotion = await db.Promotion.findByPk(params.id, {
+      include: [
+        { model: db.ProductPromotion, as: 'productPromotions' },
+        { model: db.CategoryPromotion, as: 'categoryPromotions' }
+      ]
     })
 
     if (!existingPromotion) {
@@ -234,20 +246,23 @@ export async function DELETE(
     }
 
     // Delete promotion and its associations using transaction
-    await prisma.$transaction(async (tx) => {
+    await (db.sequelize as any).transaction(async (t: any) => {
       // Delete product associations
-      await tx.productPromotion.deleteMany({
-        where: { promotionId: params.id }
+      await db.ProductPromotion.destroy({
+        where: { promotionId: params.id },
+        transaction: t
       })
       
       // Delete category associations
-      await tx.categoryPromotion.deleteMany({
-        where: { promotionId: params.id }
+      await db.CategoryPromotion.destroy({
+        where: { promotionId: params.id },
+        transaction: t
       })
 
       // Delete promotion
-      await tx.promotion.delete({
-        where: { id: params.id }
+      await db.Promotion.destroy({
+        where: { id: params.id },
+        transaction: t
       })
     })
 

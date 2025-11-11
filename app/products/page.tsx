@@ -18,6 +18,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog'
 import EditProductForm from '../../components/EditProductForm'
 import AddProductForm from '../../components/AddProductForm'
 import Navbar from '@/components/Navbar'
+import CSVImportModal from '@/components/CSVImportModal'
 
 interface Product {
   id: string
@@ -50,6 +51,110 @@ export default function ProductsPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false)
+
+  // State untuk Import CSV
+  const [csvFile, setCsvFile] = useState<File | null>(null)
+  const [isImporting, setIsImporting] = useState(false)
+  const [importSummary, setImportSummary] = useState<{createdCount: number; updatedCount?: number; skippedCount: number; totalRows: number} | null>(null)
+  const [duplicateStrategy, setDuplicateStrategy] = useState<'skip'|'update'|'overwrite'>('skip')
+  const [autoCreateCategory, setAutoCreateCategory] = useState(false)
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([])
+  const [csvPreviewRows, setCsvPreviewRows] = useState<Record<string, string>[]>([])
+
+  const parseCSVClient = (text: string): { headers: string[], rows: Record<string, string>[] } => {
+    const lines = text.split(/\r?\n/).filter(l => l.trim() !== '')
+    if (lines.length === 0) return { headers: [], rows: [] }
+    const splitRow = (row: string): string[] => {
+      const result: string[] = []
+      let current = ''
+      let inQuotes = false
+      for (let i = 0; i < row.length; i++) {
+        const char = row[i]
+        if (char === '"') {
+          if (inQuotes && row[i + 1] === '"') { current += '"'; i++ } else { inQuotes = !inQuotes }
+        } else if (char === ',' && !inQuotes) {
+          result.push(current)
+          current = ''
+        } else {
+          current += char
+        }
+      }
+      result.push(current)
+      return result.map(s => s.trim())
+    }
+    const headers = splitRow(lines[0]).map(h => h.trim())
+    const rows: Record<string, string>[] = []
+    for (let i = 1; i < lines.length; i++) {
+      const values = splitRow(lines[i])
+      const r: Record<string, string> = {}
+      headers.forEach((h, idx) => { r[h] = (values[idx] ?? '').trim() })
+      rows.push(r)
+    }
+    return { headers, rows }
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] || null
+    setCsvFile(f)
+    setImportSummary(null)
+    setCsvHeaders([])
+    setCsvPreviewRows([])
+    if (f) {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const text = String(reader.result || '')
+        const parsed = parseCSVClient(text)
+        setCsvHeaders(parsed.headers)
+        setCsvPreviewRows(parsed.rows.slice(0, 10))
+      }
+      reader.readAsText(f)
+    }
+  }
+
+  const handleImport = async () => {
+    if (!csvFile) {
+      toast.error('Pilih file CSV terlebih dahulu')
+      return
+    }
+    try {
+      setIsImporting(true)
+      const formData = new FormData()
+      formData.append('file', csvFile)
+      formData.append('duplicateStrategy', duplicateStrategy)
+      formData.append('autoCreateCategory', String(autoCreateCategory))
+      const res = await fetch('/api/products/import', { method: 'POST', body: formData })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error || 'Gagal import CSV')
+      }
+      const summary = data?.summary
+      setImportSummary(summary || null)
+      toast.success(`Import selesai: ${summary?.createdCount || 0} dibuat, ${summary?.updatedCount || 0} diperbarui, ${summary?.skippedCount || 0} dilewati`)
+      await refreshProducts()
+    } catch (err: any) {
+      toast.error(err?.message || 'Terjadi kesalahan saat import')
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
+  const downloadTemplate = () => {
+    const headers = [
+      'name','price','stock','categoryId','categoryName','size','color','description','costPrice','productCode','isActive','image'
+    ]
+    const example = [
+      'Kaos Polos','50000','100','','Atasan','M','Hitam','Kaos katun','30000','','true',''
+    ]
+    const csv = `${headers.join(',')}`+"\n"+`${example.join(',')}`
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'template_import_produk.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   // Fetcher function for SWR
   const fetcher = async (url: string) => {
@@ -369,13 +474,21 @@ export default function ProductsPage() {
               </Link>
               <h1 className="text-2xl font-bold text-gray-900">Manajemen Produk</h1>
             </div>
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
-            >
-              <PlusIcon className="h-5 w-5 mr-2" />
-              Tambah Produk
-            </button>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => setIsAddModalOpen(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
+              >
+                <PlusIcon className="h-5 w-5 mr-2" />
+                Tambah Produk
+              </button>
+              <button
+                onClick={() => setIsImportModalOpen(true)}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+              >
+                Import CSV
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -459,6 +572,8 @@ export default function ProductsPage() {
             </div>
           </div>
         </div>
+
+
 
         {/* Products Table */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -617,6 +732,15 @@ export default function ProductsPage() {
           />
         </DialogContent>
       </Dialog>
+      {/* Modals */}
+      <CSVImportModal
+        open={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImported={async (summary) => {
+          await refreshProducts()
+          toast.success('Data produk diperbarui dari impor CSV')
+        }}
+      />
     </div>
   )
 }

@@ -388,7 +388,7 @@ export default function DashboardPage() {
                   <div key={transaction.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                     <div>
                       <p className="font-medium text-sm">
-                        {transaction.customerName || 'Guest'}
+                        {transaction.member?.name || transaction.customerName || 'GUEST'}
                       </p>
                       {transaction.customerPhone && (
                         <p className="text-xs text-gray-500">

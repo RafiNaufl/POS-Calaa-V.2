@@ -1,0 +1,55 @@
+{
+  "name": "prisma-to-sequelize-migration",
+  "version": "1.0.0",
+  "description": "Migration scripts and tools for converting from Prisma to Sequelize ORM",
+  "main": "index.js",
+  "scripts": {
+    "migrate": "node data-migration.js migrate",
+    "migrate:verify": "node data-migration.js verify",
+    "migrate:rollback": "node data-migration.js rollback",
+    "schema:sync": "node schema-sync.js sync",
+    "schema:sync:force": "node schema-sync.js sync --force",
+    "schema:sync:alter": "node schema-sync.js sync --alter",
+    "schema:validate": "node schema-sync.js validate",
+    "schema:drop": "node schema-sync.js drop --confirm",
+    "schema:migrations": "node schema-sync.js migrations",
+    "convert:models": "node prisma-to-sequelize-converter.js",
+    "test:connection": "node -e \"require('./schema-sync.js'); new (require('./schema-sync.js'))().testConnection().then(() => console.log('✅ Connection successful')).catch(console.error)\"",
+    "setup": "npm run schema:sync && npm run migrate",
+    "reset": "npm run schema:drop && npm run setup"
+  },
+  "keywords": [
+    "prisma",
+    "sequelize",
+    "migration",
+    "orm",
+    "database",
+    "mysql",
+    "postgresql"
+  ],
+  "author": "POS App Migration Team",
+  "license": "MIT",
+  "dependencies": {
+    "@prisma/client": "^5.0.0",
+    "sequelize": "^6.35.0",
+    "mysql2": "^3.6.0",
+    "pg": "^8.11.0",
+    "pg-hstore": "^2.3.4",
+    "dotenv": "^16.3.0"
+  },
+  "devDependencies": {
+    "sequelize-cli": "^6.6.0",
+    "nodemon": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/pos-app-migration"
+  },
+  "bugs": {
+    "url": "https://github.com/your-org/pos-app-migration/issues"
+  },
+  "homepage": "https://github.com/your-org/pos-app-migration#readme"
+}

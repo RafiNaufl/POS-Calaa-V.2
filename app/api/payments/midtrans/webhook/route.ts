@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkTransactionStatus, verifySignature } from '@/lib/midtrans';
-import { prisma } from '@/lib/prisma';
+const db = require('@/models');
 
 export async function POST(request: NextRequest) {
   try {
@@ -70,15 +70,15 @@ export async function POST(request: NextRequest) {
     // Update transaction in database
     try {
       // Get current transaction status before update
-      const currentTransaction = await prisma.transaction.findUnique({
-        where: { id: order_id },
-        include: {
-          items: {
-            include: {
-              product: true
-            }
-          }
-        }
+      const currentTransaction = await db.Transaction.findByPk(order_id, {
+        include: [{
+          model: db.TransactionItem,
+          as: 'items',
+          include: [{
+            model: db.Product,
+            as: 'product'
+          }]
+        }]
       });
 
       if (!currentTransaction) {
@@ -89,22 +89,27 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const updatedTransaction = await prisma.transaction.update({
+      const updatedTransaction = await db.Transaction.update({
+        paymentStatus: paymentStatus as any,
+        status: transactionStatus as any,
+        paymentMethod: payment_type || 'MIDTRANS',
+        paidAt: paymentStatus === 'PAID' ? new Date() : null,
+        updatedAt: new Date(),
+      }, {
         where: { id: order_id },
-        data: {
-          paymentStatus: paymentStatus as any,
-          status: transactionStatus as any,
-          paymentMethod: payment_type || 'MIDTRANS',
-          paidAt: paymentStatus === 'PAID' ? new Date() : null,
-          updatedAt: new Date(),
-        },
-        include: {
-          items: {
-            include: {
-              product: true
-            }
-          }
-        }
+        returning: true
+      });
+
+      // Fetch the updated transaction with items for stock management
+      const transactionWithItems = await db.Transaction.findByPk(order_id, {
+        include: [{
+          model: db.TransactionItem,
+          as: 'items',
+          include: [{
+            model: db.Product,
+            as: 'product'
+          }]
+        }]
       });
 
       // Handle stock management based on payment status changes
@@ -118,15 +123,12 @@ export async function POST(request: NextRequest) {
       // So we need to reduce stock when payment becomes successful
       if (currentStatus === 'PAID' && previousStatus !== 'PAID') {
         console.log('Payment successful, reducing stock for Midtrans transaction');
-        for (const item of updatedTransaction.items) {
+        for (const item of transactionWithItems.items) {
           if (item.product) {
-            await prisma.product.update({
-              where: { id: item.product.id },
-              data: {
-                stock: {
-                  decrement: item.quantity
-                }
-              }
+            await db.Product.update({
+              stock: db.sequelize.literal(`stock - ${item.quantity}`)
+            }, {
+              where: { id: item.product.id }
             });
             console.log(`Stock reduced for product ${item.product.name}: -${item.quantity}`);
           }
@@ -140,15 +142,12 @@ export async function POST(request: NextRequest) {
       // If payment fails, is cancelled, or expires, restore stock only if it was previously paid
       else if ((currentStatus === 'FAILED' || transactionStatus === 'CANCELLED') && previousStatus === 'PAID') {
         console.log('Payment failed/cancelled after being paid, restoring stock');
-        for (const item of updatedTransaction.items) {
+        for (const item of transactionWithItems.items) {
           if (item.product) {
-            await prisma.product.update({
-              where: { id: item.product.id },
-              data: {
-                stock: {
-                  increment: item.quantity
-                }
-              }
+            await db.Product.update({
+              stock: db.sequelize.literal(`stock + ${item.quantity}`)
+            }, {
+              where: { id: item.product.id }
             });
             console.log(`Stock restored for product ${item.product.name}: +${item.quantity}`);
           }

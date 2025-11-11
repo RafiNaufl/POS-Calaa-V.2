@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import WhatsAppManager from '@/lib/whatsapp'
+import ReceiptFormatter from '@/lib/receiptFormatter'
+const db = require('@/models')
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,9 +18,8 @@ export async function POST(request: NextRequest) {
     }
     
     // Verify that the user exists and has admin role
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { id: true, role: true }
+    const user = await db.User.findByPk(session.user.id, {
+      attributes: ['id', 'role']
     })
     
     if (!user) {
@@ -48,15 +49,15 @@ export async function POST(request: NextRequest) {
     }
     
     // Find the transaction
-    const transaction = await prisma.transaction.findUnique({
-      where: { id: transactionId },
-      include: {
-        items: {
-          include: {
-            product: true
-          }
-        }
-      }
+    const transaction = await db.Transaction.findByPk(transactionId, {
+      include: [{
+        model: db.TransactionItem,
+        as: 'items',
+        include: [{
+          model: db.Product,
+          as: 'product'
+        }]
+      }]
     })
     
     if (!transaction) {
@@ -82,32 +83,97 @@ export async function POST(request: NextRequest) {
     }
     
     // Update transaction status
-    const updatedTransaction = await prisma.transaction.update({
+    const updatedTransaction = await db.Transaction.update({
+      status: 'COMPLETED',
+      paymentStatus: 'PAID',
+      paidAt: new Date()
+    }, {
       where: { id: transactionId },
-      data: {
-        status: 'COMPLETED',
-        paymentStatus: 'PAID',
-        paidAt: new Date()
-      }
+      returning: true
     })
     
     // Update product stock
     for (const item of transaction.items) {
       if (item.product) {
-        await prisma.product.update({
-          where: { id: item.product.id },
-          data: {
-            stock: {
-              decrement: item.quantity
-            }
-          }
+        await db.Product.update({
+          stock: db.sequelize.literal(`stock - ${item.quantity}`)
+        }, {
+          where: { id: item.product.id }
         })
       }
     }
     
-    // WhatsApp receipt sending is now handled manually through the transaction history page
-    // Automatic sending has been disabled to allow manual control
-    console.log(`[BankTransfer] Bank transfer confirmed for transaction ${transactionId}. WhatsApp receipt can be sent manually from transaction history.`);
+    // Send WhatsApp receipt automatically when bank transfer confirmed
+    try {
+      if (transaction.customerPhone) {
+        const fullTransaction = await db.Transaction.findByPk(transactionId, {
+          include: [
+            {
+              model: db.TransactionItem,
+              as: 'items',
+              include: [{ model: db.Product, as: 'product' }]
+            },
+            { model: db.Member, as: 'member' },
+            { model: db.User, as: 'user' }
+          ]
+        })
+        if (fullTransaction) {
+          const receiptData = {
+            id: fullTransaction.id,
+            createdAt: fullTransaction.createdAt,
+            items: fullTransaction.items.map((item: any) => ({
+              id: item.id,
+              name: item.product?.name || 'Unknown Product',
+              quantity: item.quantity,
+              price: item.price,
+              total: item.total,
+              productCode: item.product?.code || undefined,
+              size: item.product?.size || undefined,
+              color: item.product?.color || undefined
+            })),
+            subtotal: fullTransaction.subtotal,
+            tax: fullTransaction.tax,
+            finalTotal: fullTransaction.finalTotal,
+            paymentMethod: fullTransaction.paymentMethod,
+            status: fullTransaction.status,
+            cashier: undefined,
+            customer: fullTransaction.customerName || undefined,
+            customerPhone: fullTransaction.customerPhone || undefined,
+            customerEmail: fullTransaction.customerEmail || undefined,
+            pointsUsed: fullTransaction.pointsUsed,
+            pointsEarned: fullTransaction.pointsEarned,
+            voucherCode: undefined,
+            voucherDiscount: fullTransaction.voucherDiscount,
+            promotionDiscount: fullTransaction.promoDiscount,
+            member: fullTransaction.member ? {
+              name: fullTransaction.member.name,
+              phone: fullTransaction.member.phone || '',
+              email: fullTransaction.member.email || undefined
+            } : undefined,
+            user: fullTransaction.user ? { name: fullTransaction.user.name } : undefined
+          }
+          const phoneValidation = ReceiptFormatter.validatePhoneNumber(fullTransaction.customerPhone || '')
+          const receiptMessage = ReceiptFormatter.formatReceiptForWhatsApp(receiptData)
+          if (phoneValidation.isValid) {
+            const wa = WhatsAppManager.getInstance()
+            if (!wa.isConnected()) {
+              await wa.initialize()
+              await new Promise(res => setTimeout(res, 2000))
+            }
+            const result = await wa.sendMessage(phoneValidation.formatted || fullTransaction.customerPhone, receiptMessage)
+            if (result.success) {
+              console.log(`[BankTransfer] WhatsApp receipt sent for transaction ${transactionId}`)
+            } else {
+              console.warn(`[BankTransfer] Failed to send WhatsApp receipt for transaction ${transactionId}: ${result.error}`)
+            }
+          } else {
+            console.warn(`[BankTransfer] Invalid phone number for WhatsApp receipt: ${fullTransaction.customerPhone}`)
+          }
+        }
+      }
+    } catch (waErr) {
+      console.warn(`[BankTransfer] WhatsApp receipt sending error for transaction ${transactionId}:`, waErr)
+    }
     
     return NextResponse.json({
       success: true,

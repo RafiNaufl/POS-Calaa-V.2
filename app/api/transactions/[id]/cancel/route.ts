@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+const db = require('@/models')
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 
@@ -20,20 +20,25 @@ export async function POST(
     const transactionId = params.id
 
     // Find the transaction
-    const transaction = await prisma.transaction.findUnique({
-      where: { id: transactionId },
-      include: {
-        items: {
-          include: {
-            product: true
-          }
+    const transaction = await db.Transaction.findByPk(transactionId, {
+      include: [
+        {
+          model: db.TransactionItem,
+          as: 'items',
+          include: [{
+            model: db.Product,
+            as: 'product'
+          }]
         },
-        voucherUsages: {
-          include: {
-            voucher: true
-          }
+        {
+          model: db.VoucherUsage,
+          as: 'voucherUsages',
+          include: [{
+            model: db.Voucher,
+            as: 'voucher'
+          }]
         }
-      }
+      ]
     })
 
     if (!transaction) {
@@ -59,26 +64,25 @@ export async function POST(
     }
 
     // Start transaction to ensure data consistency
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await (db.sequelize as any).transaction(async (t: any) => {
       // Update transaction status to CANCELLED
-      const updatedTransaction = await tx.transaction.update({
+      const updatedTransaction = await db.Transaction.update({
+        status: 'CANCELLED',
+        updatedAt: new Date()
+      }, {
         where: { id: transactionId },
-        data: {
-          status: 'CANCELLED',
-          updatedAt: new Date()
-        }
+        returning: true,
+        transaction: t
       })
 
       // Restore product stock only if transaction was completed
       if (transaction.status === 'COMPLETED') {
         for (const item of transaction.items) {
-          await tx.product.update({
+          await db.Product.update({
+            stock: db.sequelize.literal(`stock + ${item.quantity}`)
+          }, {
             where: { id: item.productId },
-            data: {
-              stock: {
-                increment: item.quantity
-              }
-            }
+            transaction: t
           })
         }
       }
@@ -87,18 +91,17 @@ export async function POST(
       if (transaction.voucherUsages.length > 0) {
         for (const voucherUsage of transaction.voucherUsages) {
           // Delete the voucher usage record
-          await tx.voucherUsage.delete({
-            where: { id: voucherUsage.id }
+          await db.VoucherUsage.destroy({
+            where: { id: voucherUsage.id },
+            transaction: t
           })
 
           // Increment voucher usage count back
-          await tx.voucher.update({
+          await db.Voucher.update({
+            usageCount: db.sequelize.literal('usageCount - 1')
+          }, {
             where: { id: voucherUsage.voucherId },
-            data: {
-              usageCount: {
-                decrement: 1
-              }
-            }
+            transaction: t
           })
         }
       }

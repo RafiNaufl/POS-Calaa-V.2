@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import db from '@/models'
+import { Op } from 'sequelize'
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,63 +16,57 @@ export async function GET(request: NextRequest) {
     const active = searchParams.get('active')
     const name = searchParams.get('name')
 
-    let whereClause: any = {}
-    
+    // Build where conditions compatible with SQLite (case-insensitive LIKE)
+    const conditions: any[] = []
+
     if (code) {
-      whereClause.code = {
-        contains: code,
-        mode: 'insensitive'
-      }
+      conditions.push(
+        db.sequelize.where(
+          db.sequelize.fn('lower', db.sequelize.col('code')),
+          { [Op.like]: `%${code.toLowerCase()}%` }
+        )
+      )
     }
-    
+
     if (name) {
-      whereClause.name = {
-        contains: name,
-        mode: 'insensitive'
-      }
+      conditions.push(
+        db.sequelize.where(
+          db.sequelize.fn('lower', db.sequelize.col('name')),
+          { [Op.like]: `%${name.toLowerCase()}%` }
+        )
+      )
     }
-    
+
     if (active !== null) {
-      whereClause.isActive = active === 'true'
+      conditions.push({ isActive: active === 'true' })
     }
+
+    const whereClause = conditions.length > 0 ? { [Op.and]: conditions } : undefined
 
     // Check if user is admin or manager to see all details
     const isAdminOrManager = session.user.role === 'ADMIN' || session.user.role === 'MANAGER'
 
-    const vouchers = await prisma.voucher.findMany({
+    const vouchers = await db.Voucher.findAll({
       where: whereClause,
-      select: {
-        id: true,
-        code: true,
-        name: true,
-        description: true,
-        type: true,
-        value: true,
-        minPurchase: true,
-        maxDiscount: true,
-        usageLimit: true,
-        usageCount: true,
-        perUserLimit: true,
-        startDate: true,
-        endDate: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-        // Only include transactions data for admin/manager users
-        ...(isAdminOrManager && {
-          transactions: {
-            include: {
-              transaction: true,
-              user: true,
-              member: true
-            }
-          }
-        })
-      },
-      orderBy: {
-        createdAt: 'desc'
-      }
-    })
+      attributes: [
+        'id', 'code', 'name', 'description', 'type', 'value',
+        'minPurchase', 'maxDiscount', 'maxUses', 'usedCount',
+        'startDate', 'endDate', 'isActive', 'createdAt', 'updatedAt'
+      ],
+      ...(isAdminOrManager && {
+        include: [{
+          model: (db as any).VoucherUsage,
+          as: 'usages',
+          include: [
+            { model: (db as any).Transaction, as: 'transaction' },
+            { model: (db as any).User, as: 'user' },
+            { model: (db as any).Member, as: 'member' }
+          ],
+          required: false
+        }]
+      }),
+      order: [['createdAt', 'DESC']]
+    } as any)
 
     return NextResponse.json(vouchers)
   } catch (error) {
@@ -99,8 +94,7 @@ export async function POST(request: NextRequest) {
       value,
       minPurchase,
       maxDiscount,
-      usageLimit,
-      perUserLimit,
+      maxUses,
       startDate,
       endDate
     } = body
@@ -130,12 +124,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if voucher code already exists
-    const existingVoucher = await prisma.voucher.findUnique({
+    const existingVoucher = await db.Voucher.findOne({
       where: { code },
-      select: {
-        id: true,
-        code: true
-      }
+      attributes: ['id', 'code']
     })
 
     if (existingVoucher) {
@@ -146,38 +137,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Create voucher - ensure we only use fields that exist in the database
-    const voucher = await prisma.voucher.create({
-      data: {
-        code: code.toUpperCase(),
-        name,
-        description,
-        type,
-        value,
-        minPurchase: minPurchase ? Number(minPurchase) : null,
-        maxDiscount: maxDiscount ? Number(maxDiscount) : null,
-        usageLimit: usageLimit ? Number(usageLimit) : null,
-        perUserLimit: perUserLimit ? Number(perUserLimit) : null,
-        startDate: new Date(startDate),
-        endDate: new Date(endDate)
-      },
-      select: {
-        id: true,
-        code: true,
-        name: true,
-        description: true,
-        type: true,
-        value: true,
-        minPurchase: true,
-        maxDiscount: true,
-        usageLimit: true,
-        usageCount: true,
-        perUserLimit: true,
-        startDate: true,
-        endDate: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true
-      }
+    const voucher = await db.Voucher.create({
+      code: code.toUpperCase(),
+      name,
+      description,
+      type,
+      value,
+      minPurchase: minPurchase ? Number(minPurchase) : null,
+      maxDiscount: maxDiscount ? Number(maxDiscount) : null,
+      maxUses: maxUses ? Number(maxUses) : null,
+      startDate: new Date(startDate),
+      endDate: new Date(endDate)
     })
 
     return NextResponse.json(voucher, { status: 201 })

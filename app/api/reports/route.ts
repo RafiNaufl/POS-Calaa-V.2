@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
-import { Prisma } from '@prisma/client'
+import db from '@/models'
+import { Op, QueryTypes } from 'sequelize'
 // NextResponse and NextRequest are already imported on line 1
 import { startOfDay, endOfDay, subDays, subMonths, subYears, format, parseISO, differenceInDays } from 'date-fns'
 
@@ -17,7 +17,7 @@ async function withRetry<T>(operation: () => Promise<T>, maxRetries = 3, delay =
       lastError = error;
       
       // Only retry on connection errors
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P5010') {
+      if (error instanceof Error && error.message.includes('connection')) {
         console.log(`Attempt ${attempt} failed, retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         // Increase delay for next attempt (exponential backoff)
@@ -78,130 +78,228 @@ export async function GET(request: NextRequest) {
     const rfmStartDate = analysisType !== 'basic' ? subYears(startOfDay(new Date()), 1) : startDate
     
     // Get transactions for the selected period with retry mechanism
-    const transactions = await withRetry(() => prisma.transaction.findMany({
+    const transactions = await withRetry(() => db.Transaction.findAll({
       where: {
         createdAt: {
-          gte: startDate,
-          lte: endDate
+          [(Op as any).gte]: startDate,
+          [(Op as any).lte]: endDate
         },
         status: 'COMPLETED'
       },
-      include: {
-        items: {
-          include: {
-            product: {
-              include: {
-                category: true
-              }
+      include: [
+        {
+          model: db.TransactionItem,
+          as: 'items',
+          include: [
+            {
+              model: db.Product,
+              as: 'product',
+              include: [
+                {
+                  model: db.Category,
+                  as: 'category'
+                }
+              ]
             }
-          }
+          ]
         },
-        member: true,
-        user: true,
-        voucherUsages: true
-      },
-      orderBy: {
-        createdAt: 'asc'
-      }
+        {
+          model: db.Member,
+          as: 'member'
+        },
+        {
+          model: db.User,
+          as: 'user'
+        },
+        {
+          model: db.VoucherUsage,
+          as: 'voucherUsages'
+        }
+      ],
+      order: [['createdAt', 'ASC']]
     }))
     
     // Get returned transactions for the selected period
-    const returnedTransactions = await withRetry(() => prisma.transaction.findMany({
+    const returnedTransactions = await withRetry(() => db.Transaction.findAll({
       where: {
         createdAt: {
-          gte: startDate,
-          lte: endDate
+          [(Op as any).gte]: startDate,
+          [(Op as any).lte]: endDate
         },
-        status: 'RETURNED'
+        status: 'REFUNDED'
       },
-      include: {
-        items: {
-          include: {
-            product: {
-              include: {
-                category: true
-              }
+      include: [
+        {
+          model: db.TransactionItem,
+          as: 'items',
+          include: [
+            {
+              model: db.Product,
+              as: 'product',
+              include: [
+                {
+                  model: db.Category,
+                  as: 'category'
+                }
+              ]
             }
-          }
+          ]
         },
-        member: true,
-        user: true
-      },
-      orderBy: {
-        createdAt: 'asc'
-      }
+        {
+          model: db.Member,
+          as: 'member'
+        },
+        {
+          model: db.User,
+          as: 'user'
+        }
+      ],
+      order: [['createdAt', 'ASC']]
     }))
     
     // Fetch additional data for advanced analytics if requested
     if (analysisType !== 'basic') {
       // Get member transactions for RFM analysis (going back further in time)
-      memberTransactions = await withRetry(() => prisma.transaction.findMany({
+      memberTransactions = await withRetry(() => db.Transaction.findAll({
         where: {
           createdAt: {
-            gte: rfmStartDate,
-            lte: endDate
+            [(Op as any).gte]: rfmStartDate,
+            [(Op as any).lte]: endDate
           },
           status: 'COMPLETED',
           memberId: {
-            not: null
+            [(Op as any).ne]: null
           }
         },
-        include: {
-          member: true
-        },
-        orderBy: {
-          createdAt: 'asc'
-        }
+        include: [
+          {
+            model: db.Member,
+            as: 'member'
+          }
+        ],
+        order: [['createdAt', 'ASC']]
       }))
       
       // Get hourly transaction trends using raw SQL for better performance
-      const hourlyQuery = await withRetry(() => prisma.$queryRaw`
-        SELECT 
-          EXTRACT(HOUR FROM "createdAt") as hour,
-          COUNT(*) as count,
-          SUM("finalTotal") as sales
-        FROM "Transaction"
-        WHERE 
-          "createdAt" >= ${startDate} AND 
-          "createdAt" <= ${endDate} AND
-          "status" = 'COMPLETED'
-        GROUP BY EXTRACT(HOUR FROM "createdAt")
-        ORDER BY hour
-      `)
+      const dialect = db.sequelize.getDialect()
+      let hourlySQL: string
+      let weekdaySQL: string
+      
+      if (dialect === 'sqlite') {
+        hourlySQL = `
+          SELECT 
+            CAST(strftime('%H', "createdAt") AS INTEGER) as hour,
+            COUNT(*) as count,
+            SUM("finalTotal") as sales
+          FROM "Transaction"
+          WHERE 
+            "createdAt" >= :startDate AND 
+            "createdAt" <= :endDate AND
+            "status" = 'COMPLETED'
+          GROUP BY strftime('%H', "createdAt")
+          ORDER BY hour
+        `
+        weekdaySQL = `
+          SELECT 
+            CAST(strftime('%w', "createdAt") AS INTEGER) as weekday,
+            COUNT(*) as count,
+            SUM("finalTotal") as sales
+          FROM "Transaction"
+          WHERE 
+            "createdAt" >= :startDate AND 
+            "createdAt" <= :endDate AND
+            "status" = 'COMPLETED'
+          GROUP BY strftime('%w', "createdAt")
+          ORDER BY weekday
+        `
+      } else if (dialect === 'postgres') {
+        hourlySQL = `
+          SELECT 
+            EXTRACT(HOUR FROM "createdAt") as hour,
+            COUNT(*) as count,
+            SUM("finalTotal") as sales
+          FROM "Transaction"
+          WHERE 
+            "createdAt" >= :startDate AND 
+            "createdAt" <= :endDate AND
+            "status" = 'COMPLETED'
+          GROUP BY EXTRACT(HOUR FROM "createdAt")
+          ORDER BY hour
+        `
+        weekdaySQL = `
+          SELECT 
+            EXTRACT(DOW FROM "createdAt") as weekday,
+            COUNT(*) as count,
+            SUM("finalTotal") as sales
+          FROM "Transaction"
+          WHERE 
+            "createdAt" >= :startDate AND 
+            "createdAt" <= :endDate AND
+            "status" = 'COMPLETED'
+          GROUP BY EXTRACT(DOW FROM "createdAt")
+          ORDER BY weekday
+        `
+      } else {
+        // MySQL/MariaDB fallback
+        hourlySQL = `
+          SELECT 
+            HOUR(createdAt) as hour,
+            COUNT(*) as count,
+            SUM(finalTotal) as sales
+          FROM Transaction
+          WHERE 
+            createdAt >= :startDate AND 
+            createdAt <= :endDate AND
+            status = 'COMPLETED'
+          GROUP BY HOUR(createdAt)
+          ORDER BY hour
+        `
+        weekdaySQL = `
+          SELECT 
+            WEEKDAY(createdAt) as weekday,
+            COUNT(*) as count,
+            SUM(finalTotal) as sales
+          FROM Transaction
+          WHERE 
+            createdAt >= :startDate AND 
+            createdAt <= :endDate AND
+            status = 'COMPLETED'
+          GROUP BY WEEKDAY(createdAt)
+          ORDER BY weekday
+        `
+      }
+      
+      const hourlyQuery = await withRetry(() => db.sequelize.query(hourlySQL, {
+        replacements: { startDate, endDate },
+        type: QueryTypes.SELECT
+      }))
       hourlyTransactions = hourlyQuery as any[]
       
-      // Get weekday transaction trends using raw SQL
-      const weekdayQuery = await withRetry(() => prisma.$queryRaw`
-        SELECT 
-          EXTRACT(DOW FROM "createdAt") as weekday,
-          COUNT(*) as count,
-          SUM("finalTotal") as sales
-        FROM "Transaction"
-        WHERE 
-          "createdAt" >= ${startDate} AND 
-          "createdAt" <= ${endDate} AND
-          "status" = 'COMPLETED'
-        GROUP BY EXTRACT(DOW FROM "createdAt")
-        ORDER BY weekday
-      `)
+      const weekdayQuery = await withRetry(() => db.sequelize.query(weekdaySQL, {
+        replacements: { startDate, endDate },
+        type: QueryTypes.SELECT
+      }))
       weekdayTransactions = weekdayQuery as any[]
       
       // Get payment method distribution
-      const paymentQuery = await withRetry(() => prisma.$queryRaw`
+      const paymentQuery = await withRetry(() => db.sequelize.query(`
         SELECT 
           "paymentMethod",
           COUNT(*) as count,
           SUM("finalTotal") as sales,
           (COUNT(*) * 100.0 / (SELECT COUNT(*) FROM "Transaction" 
-            WHERE "createdAt" >= ${startDate} AND "createdAt" <= ${endDate} AND "status" = 'COMPLETED')) as percentage
+            WHERE "createdAt" >= :startDate AND "createdAt" <= :endDate AND "status" = 'COMPLETED')) as percentage
         FROM "Transaction"
         WHERE 
-          "createdAt" >= ${startDate} AND 
-          "createdAt" <= ${endDate} AND
+          "createdAt" >= :startDate AND 
+          "createdAt" <= :endDate AND
           "status" = 'COMPLETED'
         GROUP BY "paymentMethod"
         ORDER BY count DESC
-      `)
+      `, {
+        replacements: { startDate, endDate },
+        type: QueryTypes.SELECT
+      }))
       paymentMethods = paymentQuery as any[]
     }
     
@@ -209,62 +307,25 @@ export async function GET(request: NextRequest) {
     
     if (analysisType !== 'basic') {
       // Get all transactions for RFM analysis (1 year period)
-      memberTransactions = await withRetry(() => prisma.transaction.findMany({
+      memberTransactions = await withRetry(() => db.Transaction.findAll({
         where: {
           createdAt: {
-            gte: rfmStartDate,
-            lte: endDate
+            [(Op as any).gte]: rfmStartDate,
+            [(Op as any).lte]: endDate
           },
           status: 'COMPLETED',
-          memberId: { not: null } // Only transactions with members
+          memberId: { [(Op as any).ne]: null } // Only transactions with members
         },
-        include: {
-          member: true
-        },
-        orderBy: {
-          createdAt: 'asc'
-        }
+        include: [
+          {
+            model: db.Member,
+            as: 'member'
+          }
+        ],
+        order: [['createdAt', 'ASC']]
       }))
       
-      // Get hourly transaction distribution
-      const hourlyTransactions = await withRetry(() => prisma.$queryRaw`
-        SELECT 
-          EXTRACT(HOUR FROM "createdAt") as hour,
-          COUNT(*) as count,
-          SUM("finalTotal") as total
-        FROM "Transaction"
-        WHERE "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
-        AND "status" = 'COMPLETED'
-        GROUP BY EXTRACT(HOUR FROM "createdAt")
-        ORDER BY hour
-      `)
-      
-      // Get weekday transaction distribution
-      const weekdayTransactions = await withRetry(() => prisma.$queryRaw`
-        SELECT 
-          EXTRACT(DOW FROM "createdAt") as weekday,
-          COUNT(*) as count,
-          SUM("finalTotal") as total
-        FROM "Transaction"
-        WHERE "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
-        AND "status" = 'COMPLETED'
-        GROUP BY EXTRACT(DOW FROM "createdAt")
-        ORDER BY weekday
-      `)
-      
-      // Get payment method trends
-      const paymentMethods = await withRetry(() => prisma.$queryRaw`
-        SELECT 
-          "paymentMethod",
-          COUNT(*) as count,
-          SUM("finalTotal") as sales
-        FROM "Transaction"
-        WHERE "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
-        AND "status" = 'COMPLETED'
-        GROUP BY "paymentMethod"
-        ORDER BY count DESC
-      `)
-      
+      // Advanced analytics fetched earlier: hourlyTransactions, weekdayTransactions, paymentMethods
       hourlyData = hourlyTransactions
       weekdayData = weekdayTransactions
       paymentMethodTrends = paymentMethods
@@ -290,7 +351,7 @@ export async function GET(request: NextRequest) {
     const returnsByDate = new Map<string, { items: number, amount: number }>()
     
     // Process returned transactions first
-    returnedTransactions.forEach((transaction: any) => {
+    ;(returnedTransactions as any).forEach((transaction: any) => {
       const dateKey = transaction.createdAt.toISOString().split('T')[0]
       
       // Initialize returns for this date if it doesn't exist
@@ -307,7 +368,7 @@ export async function GET(request: NextRequest) {
     })
     
     // Process regular transactions
-    transactions.forEach((transaction: any) => {
+    ;(transactions as any).forEach((transaction: any) => {
       const dateKey = transaction.createdAt.toISOString().split('T')[0]
       const existing = salesByDate.get(dateKey) || { 
         sales: 0, 
@@ -387,11 +448,11 @@ export async function GET(request: NextRequest) {
     // Track which categories were purchased in each transaction
     const categoriesByTransaction = new Map<string, Set<string>>()
     
-    transactions.forEach((transaction: any) => {
+    ;(transactions as any).forEach((transaction: any) => {
       const transactionId = transaction.id
       categoriesByTransaction.set(transactionId, new Set())
       
-      transaction.items.forEach((item: any) => {
+      ;(transaction as any).items.forEach((item: any) => {
         if (item.product?.category) {
           const categoryName = item.product.category.name
           const saleAmount = item.subtotal
@@ -459,12 +520,12 @@ export async function GET(request: NextRequest) {
     // Track which products were purchased in each transaction
     const productsByTransaction = new Map<string, Set<string>>()
     
-    transactions.forEach((transaction: any) => {
+    ;(transactions as any).forEach((transaction: any) => {
       const transactionId = transaction.id
       const dateKey = transaction.createdAt.toISOString().split('T')[0]
       productsByTransaction.set(transactionId, new Set())
       
-      transaction.items.forEach((item: any) => {
+      ;(transaction as any).items.forEach((item: any) => {
         if (item.product) {
           const productId = item.product.id
           const productName = item.product.name
@@ -523,25 +584,25 @@ export async function GET(request: NextRequest) {
       .slice(0, 10)
 
     // Calculate summary with enhanced metrics
-    const totalSales = transactions.reduce((sum: number, t: any) => sum + t.finalTotal, 0)
-    const totalTransactions = transactions.length
+    const totalSales = (transactions as any).reduce((sum: number, t: any) => sum + t.finalTotal, 0)
+    const totalTransactions = (transactions as any).length
     const avgTransaction = totalTransactions > 0 ? totalSales / totalTransactions : 0
     
     // Count unique customers
     const uniqueCustomers = new Set()
-    transactions.forEach((t: any) => {
+    ;(transactions as any).forEach((t: any) => {
       if (t.memberId) uniqueCustomers.add(t.memberId)
     })
     const totalUniqueCustomers = uniqueCustomers.size
     
     // Count total items sold
-    const totalItems = transactions.reduce((sum: number, t: any) => {
-      return sum + t.items.reduce((itemSum: number, item: any) => itemSum + item.quantity, 0)
+    const totalItems = (transactions as any).reduce((sum: number, t: any) => {
+      return sum + (t as any).items.reduce((itemSum: number, item: any) => itemSum + item.quantity, 0)
     }, 0)
     
     // Calculate total returns and return rate
-    const totalReturns = returnedTransactions.length
-    const totalReturnAmount = returnedTransactions.reduce((sum: number, t: any) => sum + t.finalTotal, 0)
+    const totalReturns = (returnedTransactions as any).length
+    const totalReturnAmount = (returnedTransactions as any).reduce((sum: number, t: any) => sum + t.finalTotal, 0)
     const returnRate = totalSales > 0 ? (totalReturnAmount / totalSales) * 100 : 0
 
     // Calculate growth (compare with previous period)
@@ -552,26 +613,22 @@ export async function GET(request: NextRequest) {
     const previousEndDate = new Date(startDate)
     previousEndDate.setDate(previousEndDate.getDate() - 1)
     
-    const previousTransactions = await withRetry(() => prisma.transaction.findMany({
+    const previousTransactions = await withRetry(() => db.Transaction.findAll({
       where: {
         createdAt: {
-          gte: previousStartDate,
-          lte: previousEndDate
+          [(Op as any).gte]: previousStartDate,
+          [(Op as any).lte]: previousEndDate
         },
         status: 'COMPLETED'
       },
-      include: {
-        items: true,
-        member: true
-      }
     }))
-    
-    const previousSales = previousTransactions.reduce((sum: number, t: any) => sum + t.finalTotal, 0)
-    const previousTransactionCount = previousTransactions.length
+
+    const previousSales = (previousTransactions as any).reduce((sum: number, t: any) => sum + t.finalTotal, 0)
+    const previousTransactionCount = (previousTransactions as any).length
     
     // Count unique customers in previous period
     const previousUniqueCustomers = new Set()
-    previousTransactions.forEach((t: any) => {
+    ;(previousTransactions as any).forEach((t: any) => {
       if (t.memberId) previousUniqueCustomers.add(t.memberId)
     })
     
@@ -1031,7 +1088,7 @@ export async function GET(request: NextRequest) {
     const colorStats = new Map<string, { quantity: number; revenue: number; }>()
     
     // Process all transactions (including regular and returned)
-    const allTransactions = [...transactions, ...returnedTransactions]
+    const allTransactions = [...(transactions as any), ...(returnedTransactions as any)]
     
     allTransactions.forEach((transaction: any) => {
       transaction.items.forEach((item: any) => {
@@ -1189,7 +1246,7 @@ export async function GET(request: NextRequest) {
     }>();
 
     // Process all transactions to gather promotion data
-    transactions.forEach((transaction: any) => {
+    ;(transactions as any).forEach((transaction: any) => {
       if (transaction.promoDiscount > 0) {
         // Try to extract promotion info from transaction metadata or related tables
         // This is a simplified approach - in a real implementation, you would need to
@@ -1298,7 +1355,7 @@ export async function GET(request: NextRequest) {
       },
       cashierPerformance,
       returnData: {
-        totalReturns: returnedTransactions.length,
+        totalReturns: (returnedTransactions as any).length,
         totalReturnAmount,
         returnRate
       },
@@ -1347,20 +1404,11 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching report data:', error)
     
-    // Handle specific Prisma errors
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      // Connection errors (P5010)
-      if (error.code === 'P5010') {
-        return NextResponse.json(
-          { error: 'Database connection error. Please try again later.' },
-          { status: 503 } // Service Unavailable
-        )
-      }
-      
-      // Other known Prisma errors
+    // Handle specific Sequelize errors
+    if (error instanceof Error && error.name === 'SequelizeConnectionError') {
       return NextResponse.json(
-        { error: `Database error: ${error.message}` },
-        { status: 500 }
+        { error: 'Database connection error. Please try again later.' },
+        { status: 503 } // Service Unavailable
       )
     }
     

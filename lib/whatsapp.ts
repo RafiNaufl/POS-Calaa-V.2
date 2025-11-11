@@ -7,7 +7,8 @@ import makeWASocket, {
   isJidBroadcast,
   isJidGroup,
   isJidStatusBroadcast,
-  isJidUser
+  isJidUser,
+  fetchLatestBaileysVersion
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import P from 'pino';
@@ -96,9 +97,14 @@ class WhatsAppManager {
       
       const { state, saveCreds } = await useMultiFileAuthState(this.authDir);
       
+      // Fetch latest WhatsApp Web version for compatibility
+      const { version, isLatest } = await fetchLatestBaileysVersion();
+      console.log('[WhatsApp] Using WhatsApp Web version:', version, 'latest?', isLatest);
+      
       this.service.socket = makeWASocket({
         auth: state,
         logger,
+        version,
         printQRInTerminal: false,
         connectTimeoutMs: 60000, // Increased timeout for better stability
         keepAliveIntervalMs: 30000,
@@ -111,11 +117,10 @@ class WhatsAppManager {
         maxMsgRetryCount: 2, // Reduced retry count to prevent loops
         // Prevent automatic reconnection by the library itself
         shouldIgnoreJid: jid => isJidBroadcast(jid),
-        // Add browser info to avoid conflicts
-        browser: ['POS App', 'Chrome', '10.15.7'],
-        // Disable automatic reconnection to handle it manually
+        // Use a conservative, valid browser signature
+        browser: ['Wear Calaa POS', 'Chrome', '114.0.0'],
         options: {
-          // Add options to prevent aggressive reconnections
+          // Reserved for future tuning
         },
         patchMessageBeforeSending: (message) => {
           const requiresPatch = !!(
@@ -155,7 +160,7 @@ class WhatsAppManager {
         }
 
         if (connection === 'close') {
-          const disconnectReason = (lastDisconnect?.error as Boom)?.output?.statusCode;
+          const disconnectReason = (lastDisconnect?.error as any)?.output?.statusCode;
           const shouldReconnect = disconnectReason !== DisconnectReason.loggedOut;
           
           console.log('[WhatsApp] Connection closed. Should reconnect:', shouldReconnect);
@@ -166,45 +171,37 @@ class WhatsAppManager {
           // Reset connection status immediately
           this.service.isConnected = false;
           this.isInitializing = false;
-          
-          // Handle specific disconnect reasons
-          if (disconnectReason === DisconnectReason.connectionClosed) {
-            console.log('[WhatsApp] Connection closed normally');
-          } else if (disconnectReason === DisconnectReason.connectionLost) {
-            console.log('[WhatsApp] Connection lost, will attempt to reconnect');
-          } else if (disconnectReason === DisconnectReason.restartRequired) {
-            console.log('[WhatsApp] Restart required');
-          } else if (disconnectReason === DisconnectReason.timedOut) {
-            console.log('[WhatsApp] Connection timed out');
-          } else if (disconnectReason === 440) { // Stream error conflict
-            console.log('[WhatsApp] Stream conflict detected, waiting longer before reconnect');
-            this.reconnectAttempts++;
-            
-            // Use exponential backoff for stream conflicts
-            const delay = Math.min(this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts - 1), 60000);
-            
-            if (shouldReconnect && !this.reconnectTimeout && this.reconnectAttempts <= this.maxReconnectAttempts) {
-              console.log(`[WhatsApp] Scheduling reconnection in ${delay}ms due to stream conflict (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-              this.reconnectTimeout = setTimeout(() => {
-                console.log('[WhatsApp] Attempting to reconnect after stream conflict...');
-                this.initialize().catch(error => {
-                  console.error('[WhatsApp] Reconnection failed:', error);
-                });
-              }, delay);
-            } else if (this.reconnectAttempts > this.maxReconnectAttempts) {
-              console.log('[WhatsApp] Max reconnection attempts reached, stopping reconnection');
-              this.reconnectAttempts = 0; // Reset for future attempts
+
+          // If we hit 405 (Method Not Allowed) or Boom payload shows 'Connection Failure', reset auth to force fresh QR
+          const isMethodNotAllowed = disconnectReason === 405 || (lastDisconnect?.error && ((lastDisconnect.error as any).output?.payload?.message || '').includes('Connection Failure'));
+          const disconnectLocation = (lastDisconnect?.error as any)?.data?.location;
+          if (isMethodNotAllowed || disconnectLocation === 'atn' || disconnectLocation === 'cco' || disconnectReason === 401) {
+            try {
+              console.warn('[WhatsApp] Detected invalid/expired session (405/401/atn/cco). Wiping auth state to force fresh login...');
+              await this.resetAuthState();
+              // Small delay to ensure filesystem settles
+              await new Promise(res => setTimeout(res, 500));
+            } catch (wipeErr) {
+              console.error('[WhatsApp] Failed to wipe auth state:', wipeErr);
             }
-            return; // Exit early to avoid normal reconnection logic
           }
-          
-          if (shouldReconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
+
+          // Force a fresh initialization when logged out (401) so QR is emitted
+          if (!shouldReconnect) {
+            console.log('[WhatsApp] Logged out (401). Forcing fresh initialization to display QR...');
+            if (!this.reconnectTimeout) {
+              this.reconnectTimeout = setTimeout(() => {
+                this.initialize().catch(error => {
+                  console.error('[WhatsApp] Forced re-initialization failed:', error);
+                });
+              }, 1000);
+            }
+          } else if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
-            
+
             // Calculate exponential backoff delay
             const delay = Math.min(this.baseReconnectDelay * Math.pow(1.5, this.reconnectAttempts - 1), 60000);
-            
-            // Only reconnect if we're not already trying to reconnect
+
             if (!this.reconnectTimeout) {
               console.log(`[WhatsApp] Scheduling reconnection in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
               this.reconnectTimeout = setTimeout(() => {
@@ -216,7 +213,7 @@ class WhatsAppManager {
             } else {
               console.log('[WhatsApp] Reconnection already scheduled, skipping...');
             }
-          } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+          } else {
             console.log('[WhatsApp] Max reconnection attempts reached, stopping automatic reconnection');
             this.reconnectAttempts = 0; // Reset for future manual attempts
           }
@@ -229,78 +226,54 @@ class WhatsAppManager {
           // Reset reconnection attempts on successful connection
           this.reconnectAttempts = 0;
           
-          // Clear any pending reconnection timeout since we're now connected
           if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
             this.reconnectTimeout = null;
             console.log('[WhatsApp] Cleared pending reconnection timeout');
           }
           
-          // Additional verification that socket is ready
           console.log('[WhatsApp] Connection fully established and ready for messaging');
         } else if (connection === 'connecting') {
           console.log('[WhatsApp] Connecting to WhatsApp...');
-          // Don't change isConnected to false if we're already connected
-          // This prevents unnecessary state changes during reconnection attempts
           if (this.service.isConnected) {
             console.log('[WhatsApp] Already connected, maintaining connection state during reconnect');
           } else {
             this.service.isConnected = false;
           }
         } else {
-          // Handle other connection states (undefined, etc.)
-          console.log('[WhatsApp] Unknown connection state:', connection);
-          // Only set to false if we're not currently connected
-          if (!this.service.isConnected) {
-            this.service.isConnected = false;
-          }
+          // No-op for other states
         }
       });
 
+      // Persist creds updates
       this.service.socket.ev.on('creds.update', saveCreds);
-      
-      // Handle socket errors with better error management
-      this.service.socket.ws?.on('error', (error) => {
-        console.error('[WhatsApp] WebSocket error:', error);
-        // Don't immediately reconnect on WebSocket errors to prevent loops
-      });
-      
-      console.log('[WhatsApp] WhatsApp service initialized successfully');
+
     } catch (error) {
-      console.error('[WhatsApp] Error initializing WhatsApp service:', error);
-      this.service.isConnected = false;
+      console.error('[WhatsApp] Error initializing service:', error);
+    } finally {
       this.isInitializing = false;
-      
-      // Clear any pending reconnection timeout on error
-      if (this.reconnectTimeout) {
-        clearTimeout(this.reconnectTimeout);
-        this.reconnectTimeout = null;
-      }
-      
-      // Increment reconnection attempts and use exponential backoff
-      this.reconnectAttempts++;
-      
-      // Don't throw the error to prevent unhandled promise rejections
-      // Instead, schedule a retry after a delay with exponential backoff
-      if (error && typeof error === 'object' && 'message' in error) {
-        const errorMessage = (error as Error).message;
-        if ((errorMessage.includes('Timed Out') || errorMessage.includes('Stream Errored')) && 
-            this.reconnectAttempts <= this.maxReconnectAttempts) {
-          
-          const delay = Math.min(this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts - 1), 60000);
-          
-          console.log(`[WhatsApp] Initialization failed due to timeout/stream error, will retry in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-          this.reconnectTimeout = setTimeout(() => {
-            console.log('[WhatsApp] Retrying initialization after error...');
-            this.initialize().catch(retryError => {
-              console.error('[WhatsApp] Retry initialization failed:', retryError);
-            });
-          }, delay);
-        } else if (this.reconnectAttempts > this.maxReconnectAttempts) {
-          console.log('[WhatsApp] Max initialization attempts reached, stopping automatic retry');
-          this.reconnectAttempts = 0; // Reset for future manual attempts
+    }
+  }
+
+  private async resetAuthState(): Promise<void> {
+    try {
+      if (fs.existsSync(this.authDir)) {
+        const files = fs.readdirSync(this.authDir);
+        for (const file of files) {
+          const fullPath = path.join(this.authDir, file);
+          try {
+            fs.rmSync(fullPath, { recursive: true, force: true });
+          } catch (_) {
+            // ignore
+          }
         }
+        console.log('[WhatsApp] Auth state wiped');
       }
+      // Also reset cached QR
+      this.service.qrCode = null;
+      this.service.isConnected = false;
+    } catch (err) {
+      console.error('[WhatsApp] Failed to reset auth state:', err);
     }
   }
 

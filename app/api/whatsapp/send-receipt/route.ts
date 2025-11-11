@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import db from '@/models';
 import WhatsAppService from '@/lib/whatsapp';
 import ReceiptFormatter, { TransactionWithRelations } from '@/lib/receiptFormatter';
 import WhatsAppErrorHandler from '@/lib/errorHandler';
@@ -45,17 +45,27 @@ export async function POST(request: NextRequest) {
     }
 
     // Get transaction with all related data
-    const transaction = await prisma.transaction.findUnique({
-      where: { id: transactionId },
-      include: {
-        items: {
-          include: {
-            product: true
-          }
+    const transaction = await db.Transaction.findByPk(transactionId, {
+      include: [
+        {
+          model: db.TransactionItem,
+          as: 'items',
+          include: [
+            {
+              model: db.Product,
+              as: 'product'
+            }
+          ]
         },
-        member: true,
-        user: true
-      }
+        {
+          model: db.Member,
+          as: 'member'
+        },
+        {
+          model: db.User,
+          as: 'user'
+        }
+      ]
     }) as TransactionWithRelations | null;
 
     if (!transaction) {
@@ -74,12 +84,12 @@ export async function POST(request: NextRequest) {
         name: item.product?.name || 'Unknown Product',
         quantity: item.quantity,
         price: item.price,
-        total: item.subtotal,
-        productCode: item.product?.productCode || undefined,
+        total: item.subtotal, // gunakan subtotal dari TransactionItem
+        productCode: item.product?.code || undefined, // Use 'code' instead of 'productCode'
         size: item.product?.size || undefined,
         color: item.product?.color || undefined
       })),
-      subtotal: transaction.total - transaction.tax,
+      subtotal: transaction.total, // gunakan total dari Transaction sebagai subtotal transaksi
       tax: transaction.tax,
       finalTotal: transaction.finalTotal,
       paymentMethod: transaction.paymentMethod,

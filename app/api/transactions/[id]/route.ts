@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import db from '@/models'
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -16,40 +16,40 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     const { id } = params
 
-    const transaction = await prisma.transaction.findUnique({
-      where: { id },
-      include: {
-        items: {
-          include: {
-            product: true
-          }
-        },
-        user: {
-          select: {
-            name: true,
-            email: true
-          }
-        },
-        member: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            email: true,
-            points: true
-          }
-        },
-        voucherUsages: {
-          include: {
-            voucher: {
-              select: {
-                code: true,
-                name: true
-              }
+    const transaction = await db.Transaction.findByPk(id, {
+      include: [
+        {
+          model: db.TransactionItem,
+          as: 'items',
+          include: [
+            {
+              model: db.Product,
+              as: 'product'
             }
-          }
+          ]
+        },
+        {
+          model: db.User,
+          as: 'user',
+          attributes: ['name', 'email']
+        },
+        {
+          model: db.Member,
+          as: 'member',
+          attributes: ['id', 'name', 'phone', 'email', 'points']
+        },
+        {
+          model: db.VoucherUsage,
+          as: 'voucherUsages',
+          include: [
+            {
+              model: db.Voucher,
+              as: 'voucher',
+              attributes: ['code', 'name']
+            }
+          ]
         }
-      }
+      ]
     })
 
     if (!transaction) {
@@ -85,9 +85,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     const { status, paymentStatus } = body
 
     // Verify transaction exists
-    const existingTransaction = await prisma.transaction.findUnique({
-      where: { id }
-    })
+    const existingTransaction = await db.Transaction.findByPk(id)
 
     if (!existingTransaction) {
       return NextResponse.json(
@@ -97,35 +95,38 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     }
 
     // Update transaction
-    const updatedTransaction = await prisma.transaction.update({
-      where: { id },
-      data: {
-        ...(status && { status }),
-        ...(paymentStatus && { paymentStatus }),
-        ...(status === 'COMPLETED' && { paidAt: new Date() })
-      },
-      include: {
-        items: {
-          include: {
-            product: true
-          }
+    const updatedTransaction = await db.Transaction.findByPk(id, {
+      include: [
+        {
+          model: db.TransactionItem,
+          as: 'items',
+          include: [
+            {
+              model: db.Product,
+              as: 'product'
+            }
+          ]
         },
-        user: {
-          select: {
-            name: true,
-            email: true
-          }
+        {
+          model: db.User,
+          as: 'user',
+          attributes: ['name', 'email']
         },
-        member: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            email: true,
-            points: true
-          }
+        {
+          model: db.Member,
+          as: 'member',
+          attributes: ['id', 'name', 'phone', 'email', 'points']
         }
-      }
+      ]
+    })
+
+    // Update the transaction
+    await db.Transaction.update({
+      ...(status && { status }),
+      ...(paymentStatus && { paymentStatus }),
+      ...(status === 'COMPLETED' && { paidAt: new Date() })
+    }, {
+      where: { id }
     })
     
     // WhatsApp receipt sending is now handled manually through the transaction history page

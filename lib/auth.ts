@@ -1,7 +1,17 @@
 import { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
-import { PrismaClient } from '@prisma/client'
+
+// Define the database user type
+interface DatabaseUser {
+  id: number;
+  email: string;
+  password: string;
+  name: string;
+  role: 'ADMIN' | 'MANAGER' | 'CASHIER';
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -16,14 +26,19 @@ export const authOptions: NextAuthOptions = {
           return null
         }
 
-        const prisma = new PrismaClient()
-        
         try {
-          const user = await prisma.user.findUnique({
+          // Dynamically import database models to avoid initialization issues
+          const { sequelize } = require('../lib/sequelize')
+          const { DataTypes } = require('sequelize')
+          
+          // Lazy load the User model
+          const User = require('../models/user')(sequelize, DataTypes)
+          
+          const user = await User.findOne({
             where: {
               email: credentials.email
             }
-          })
+          }) as DatabaseUser | null
 
           if (!user) {
             return null
@@ -41,7 +56,7 @@ export const authOptions: NextAuthOptions = {
           // lastLogin feature has been removed
 
           return {
-            id: user.id,
+            id: user.id.toString(), // Convert to string for NextAuth
             email: user.email,
             name: user.name,
             role: user.role as 'ADMIN' | 'MANAGER' | 'CASHIER'
@@ -49,8 +64,6 @@ export const authOptions: NextAuthOptions = {
         } catch (error) {
           console.error('Auth error:', error)
           return null
-        } finally {
-          await prisma.$disconnect()
         }
       }
     })

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
-import { Prisma } from '@prisma/client'
-import { startOfDay, endOfDay, subDays, subMonths, subYears, format, parseISO, differenceInDays } from 'date-fns'
+import db from '@/models'
+import { Op } from 'sequelize'
+import { startOfDay, endOfDay, subDays, subMonths, subYears } from 'date-fns'
 
 // Helper function to retry database operations
 async function withRetry<T>(operation: () => Promise<T>, maxRetries = 3, delay = 1000): Promise<T> {
@@ -16,7 +16,7 @@ async function withRetry<T>(operation: () => Promise<T>, maxRetries = 3, delay =
       lastError = error;
       
       // Only retry on connection errors
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P5010') {
+      if (error instanceof Error && error.name === 'SequelizeConnectionError') {
         console.log(`Attempt ${attempt} failed, retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         // Increase delay for next attempt (exponential backoff)
@@ -30,6 +30,20 @@ async function withRetry<T>(operation: () => Promise<T>, maxRetries = 3, delay =
   
   // If we've exhausted all retries, throw the last error
   throw lastError;
+}
+
+// Ensure OperationalExpense table exists (dev-safe)
+async function ensureOperationalExpenseTable() {
+  try {
+    await db.sequelize.getQueryInterface().describeTable('operational_expense')
+  } catch (err) {
+    try {
+      await db.OperationalExpense.sync()
+      console.log('operational_expense table created via sync (financial report)')
+    } catch (syncErr) {
+      console.warn('Failed to ensure operational_expense table:', syncErr)
+    }
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -63,54 +77,74 @@ export async function GET(request: NextRequest) {
         startDate = startOfDay(subDays(endDate, 30))
     }
     
-    // Get transactions for the selected period with retry mechanism
-    const transactions = await withRetry(() => prisma.transaction.findMany({
+    // Get transactions for the selected period
+    const transactions = await withRetry(() => db.Transaction.findAll({
       where: {
         createdAt: {
-          gte: startDate,
-          lte: endDate
+          [(Op as any).gte]: startDate,
+          [(Op as any).lte]: endDate
         },
         status: 'COMPLETED'
       },
-      include: {
-        items: {
-          include: {
-            product: {
-              include: {
-                category: true
-              }
+      include: [
+        {
+          model: db.TransactionItem,
+          as: 'items',
+          include: [
+            {
+              model: db.Product,
+              as: 'product',
+              include: [
+                {
+                  model: db.Category,
+                  as: 'category'
+                }
+              ]
             }
-          }
+          ]
         },
-        voucherUsages: true
-      },
-      orderBy: {
-        createdAt: 'asc'
-      }
+        {
+          model: db.Member,
+          as: 'member'
+        },
+        {
+          model: db.User,
+          as: 'user'
+        },
+        {
+          model: db.VoucherUsage,
+          as: 'voucherUsages',
+          include: [
+            {
+              model: db.Voucher,
+              as: 'voucher'
+            }
+          ]
+        }
+      ],
+      order: [['createdAt', 'ASC']]
     }))
     
     // Calculate revenue metrics
-    const grossSales = transactions.reduce((sum: number, t: any) => sum + t.total, 0)
-    const discounts = transactions.reduce((sum: number, t: any) => sum + t.discount, 0)
-    const voucherDiscounts = transactions.reduce((sum: number, t: any) => sum + t.voucherDiscount, 0)
-    const promoDiscounts = transactions.reduce((sum: number, t: any) => sum + t.promoDiscount, 0)
+    const grossSales = (transactions as any).reduce((sum: number, t: any) => sum + t.total, 0)
+    const discounts = (transactions as any).reduce((sum: number, t: any) => sum + t.discount, 0)
+    const voucherDiscounts = (transactions as any).reduce((sum: number, t: any) => sum + t.voucherDiscount, 0)
+    const promoDiscounts = (transactions as any).reduce((sum: number, t: any) => sum + t.promoDiscount, 0)
     const totalDiscounts = discounts + voucherDiscounts + promoDiscounts
     const netSales = grossSales - totalDiscounts
-    // Taxes removed - no longer calculating tax
-    const totalRevenue = transactions.reduce((sum: number, t: any) => sum + t.finalTotal, 0)
+    const totalRevenue = (transactions as any).reduce((sum: number, t: any) => sum + t.finalTotal, 0)
     
-    // Calculate cost of goods sold (COGS) using actual cost price data
+    // Calculate cost of goods sold (COGS)
     let costOfGoodsSold = 0
     let grossProfit = 0
     
-    // Calculate COGS by category
     const cogsByCategory: Record<string, number> = {}
     const revenueByCategory: Record<string, number> = {}
     const profitByCategory: Record<string, number> = {}
     const marginByCategory: Record<string, number> = {}
     
-    transactions.forEach((transaction: any) => {
-      transaction.items.forEach((item: any) => {
+    ;(transactions as any).forEach((transaction: any) => {
+      (transaction as any).items.forEach((item: any) => {
         if (item.product?.category) {
           const categoryName = item.product.category.name
           const revenue = item.subtotal
@@ -118,14 +152,11 @@ export async function GET(request: NextRequest) {
           const costPrice = item.product.costPrice || 0
           const cost = costPrice * quantity
           
-          // Calculate margin for this product
           const unitPrice = item.price
           const margin = unitPrice > 0 ? (unitPrice - costPrice) / unitPrice : 0
           
-          // Add to total COGS
           costOfGoodsSold += cost
           
-          // Track by category
           if (!cogsByCategory[categoryName]) {
             cogsByCategory[categoryName] = 0
             revenueByCategory[categoryName] = 0
@@ -137,8 +168,6 @@ export async function GET(request: NextRequest) {
           revenueByCategory[categoryName] += revenue
           profitByCategory[categoryName] += (revenue - cost)
           
-          // Update the average margin for this category
-          // We need to recalculate the weighted average margin
           const currentRevenue = revenueByCategory[categoryName]
           const currentMargin = marginByCategory[categoryName]
           const previousRevenue = currentRevenue - revenue
@@ -155,49 +184,39 @@ export async function GET(request: NextRequest) {
     // Calculate gross profit
     grossProfit = netSales - costOfGoodsSold
     
-    // Dapatkan data biaya operasional dari database untuk periode yang sama
-    const operationalExpenses = await withRetry(() => prisma.$queryRaw`
-      SELECT id, name, amount, category, date, description, receipt, "createdBy", "createdAt", "updatedAt"
-      FROM "operational_expense"
-      WHERE date >= ${startDate} AND date <= ${endDate}
-    ` as Promise<Array<{
-      id: string;
-      name: string;
-      amount: number;
-      category: string;
-      date: Date;
-      description: string | null;
-      receipt: string | null;
-      createdBy: string;
-      createdAt: Date;
-      updatedAt: Date;
-    }>>)
+    // Ensure expenses table exists before querying
+    await ensureOperationalExpenseTable()
     
-    // Kelompokkan biaya operasional berdasarkan nama
-    const operatingExpenses: Record<string, number> = {}
-    operationalExpenses.forEach((expense) => {
-      if (!operatingExpenses[expense.name]) {
-        operatingExpenses[expense.name] = 0
+    // Operational expenses from table
+    const expenses = await withRetry(() => db.OperationalExpense.findAll({
+      where: {
+        date: {
+          [(Op as any).gte]: startDate,
+          [(Op as any).lte]: endDate
+        }
       }
-      operatingExpenses[expense.name] += expense.amount
+    }))
+    
+    const operatingExpenses: Record<string, number> = {}
+    ;(expenses as any).forEach((expense: any) => {
+      const key = expense.category || expense.name || 'Lain-lain'
+      operatingExpenses[key] = (operatingExpenses[key] || 0) + (Number(expense.amount) || 0)
     })
     
-    // Jika tidak ada data biaya operasional, gunakan estimasi sebagai fallback
     if (Object.keys(operatingExpenses).length === 0) {
-      // Fallback ke estimasi jika tidak ada data aktual
-      operatingExpenses['Gaji Karyawan'] = grossSales * 0.15 // 15% of gross sales
-      operatingExpenses['Sewa'] = grossSales * 0.10 // 10% of gross sales
-      operatingExpenses['Utilitas'] = grossSales * 0.05 // 5% of gross sales
-      operatingExpenses['Pemasaran'] = grossSales * 0.03 // 3% of gross sales
-      operatingExpenses['Lain-lain'] = grossSales * 0.02 // 2% of gross sales
+      operatingExpenses['Gaji Karyawan'] = grossSales * 0.15
+      operatingExpenses['Sewa'] = grossSales * 0.10
+      operatingExpenses['Utilitas'] = grossSales * 0.05
+      operatingExpenses['Pemasaran'] = grossSales * 0.03
+      operatingExpenses['Lain-lain'] = grossSales * 0.02
     }
     
-    const totalOperatingExpenses = Object.values(operatingExpenses).reduce((sum, expense) => sum + expense, 0)
+    const totalOperatingExpenses = Object.values(operatingExpenses).reduce((sum, v) => sum + v, 0)
     const operatingProfit = grossProfit - totalOperatingExpenses
-    const netProfit = operatingProfit // Assuming no other income/expenses or taxes
-    const profitMargin = (netProfit / grossSales) * 100
+    const netProfit = operatingProfit
+    const profitMargin = grossSales > 0 ? (netProfit / grossSales) * 100 : 0
     
-    // Calculate previous period metrics for comparison
+    // Previous period
     const previousStartDate = new Date(startDate)
     const periodDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
     previousStartDate.setDate(previousStartDate.getDate() - periodDays)
@@ -205,27 +224,34 @@ export async function GET(request: NextRequest) {
     const previousEndDate = new Date(startDate)
     previousEndDate.setDate(previousEndDate.getDate() - 1)
     
-    const previousTransactions = await withRetry(() => prisma.transaction.findMany({
+    const previousTransactions = await withRetry(() => db.Transaction.findAll({
       where: {
         createdAt: {
-          gte: previousStartDate,
-          lte: previousEndDate
+          [(Op as any).gte]: previousStartDate,
+          [(Op as any).lte]: previousEndDate
         },
         status: 'COMPLETED'
       },
-      include: {
-        items: true
-      }
+      include: [
+        {
+          model: db.TransactionItem,
+          as: 'items',
+          include: [
+            {
+              model: db.Product,
+              as: 'product'
+            }
+          ]
+        }
+      ]
     }))
     
-    const previousGrossSales = previousTransactions.reduce((sum: number, t: any) => sum + t.total, 0)
-    const previousNetProfit = previousGrossSales * (profitMargin / 100) // Estimate using same profit margin
+    const previousGrossSales = (previousTransactions as any).reduce((sum: number, t: any) => sum + t.total, 0)
+    const previousNetProfit = previousGrossSales > 0 ? previousGrossSales * (profitMargin / 100) : 0
     
-    // Calculate growth
     const salesGrowth = previousGrossSales > 0 ? ((grossSales - previousGrossSales) / previousGrossSales) * 100 : 0
     const profitGrowth = previousNetProfit > 0 ? ((netProfit - previousNetProfit) / previousNetProfit) * 100 : 0
     
-    // Prepare response data
     const financialData = {
       period: {
         startDate: startDate.toISOString(),
@@ -241,7 +267,6 @@ export async function GET(request: NextRequest) {
           total: totalDiscounts
         },
         netSales,
-        // taxes field removed
         totalRevenue
       },
       costs: {
@@ -250,11 +275,11 @@ export async function GET(request: NextRequest) {
       },
       profitability: {
         grossProfit,
-        grossProfitMargin: (grossProfit / grossSales) * 100,
+        grossProfitMargin: grossSales > 0 ? (grossProfit / grossSales) * 100 : 0,
         operatingExpenses,
         totalOperatingExpenses,
         operatingProfit,
-        operatingProfitMargin: (operatingProfit / grossSales) * 100,
+        operatingProfitMargin: grossSales > 0 ? (operatingProfit / grossSales) * 100 : 0,
         netProfit,
         profitMargin
       },
@@ -268,37 +293,22 @@ export async function GET(request: NextRequest) {
         sales: salesGrowth,
         profit: profitGrowth
       },
-      transactionCount: transactions.length
+      transactionCount: (transactions as any).length
     }
     
-    // Create a custom serializer to handle BigInt values
-    const bigIntSerializer = (key: string, value: any) => 
-      typeof value === 'bigint' ? value.toString() : value;
-    
-    // Apply BigInt serialization before passing to NextResponse
-    const serializedData = JSON.parse(JSON.stringify(financialData, bigIntSerializer));
+    const bigIntSerializer = (key: string, value: any) => typeof value === 'bigint' ? value.toString() : value
+    const serializedData = JSON.parse(JSON.stringify(financialData, bigIntSerializer))
     return NextResponse.json(serializedData, { status: 200 })
   } catch (error) {
     console.error('Error fetching financial report data:', error)
     
-    // Handle specific Prisma errors
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      // Connection errors (P5010)
-      if (error.code === 'P5010') {
-        return NextResponse.json(
-          { error: 'Database connection error. Please try again later.' },
-          { status: 503 } // Service Unavailable
-        )
-      }
-      
-      // Other known Prisma errors
+    if (error instanceof Error && error.name === 'SequelizeConnectionError') {
       return NextResponse.json(
-        { error: `Database error: ${error.message}` },
-        { status: 500 }
+        { error: 'Database connection error. Please try again later.' },
+        { status: 503 }
       )
     }
     
-    // Handle other errors
     return NextResponse.json(
       { error: 'Failed to fetch financial report data' },
       { status: 500 }

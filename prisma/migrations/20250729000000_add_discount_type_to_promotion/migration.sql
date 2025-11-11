@@ -1,2 +1,0 @@
--- AlterTable
-ALTER TABLE "Promotion" ADD COLUMN "discountType" TEXT NOT NULL DEFAULT 'PERCENTAGE';

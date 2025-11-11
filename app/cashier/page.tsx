@@ -185,7 +185,7 @@ export default function CashierPage() {
   const [member, setMember] = useState<Member | null>(null)
   const [pointsToUse, setPointsToUse] = useState(0)
   const [isSearchingMember, setIsSearchingMember] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'DIGITAL_WALLET' | 'BANK_TRANSFER' | 'MIDTRANS'>('CASH')
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'QRIS' | 'BANK_TRANSFER' | 'MIDTRANS'>('CASH')
   // Payment methods are limited to CASH and CARD only
   const [cashAmount, setCashAmount] = useState<number>(0)
   const [changeAmount, setChangeAmount] = useState<number>(0)
@@ -195,7 +195,11 @@ export default function CashierPage() {
   const [showTransactionModal, setShowTransactionModal] = useState(false)
   const [completedTransaction, setCompletedTransaction] = useState<any>(null)
   const [showBankTransferModal, setShowBankTransferModal] = useState(false)
-  const [bankTransferTransaction, setBankTransferTransaction] = useState<any>(null)
+const [bankTransferTransaction, setBankTransferTransaction] = useState<any>(null)
+const [showQrisModal, setShowQrisModal] = useState(false)
+const [qrisTransaction, setQrisTransaction] = useState<any>(null)
+const [showCardModal, setShowCardModal] = useState(false)
+const [cardTransaction, setCardTransaction] = useState<any>(null)
   // DOKU Modal state removed
   // Pending transaction state removed
   const [voucherCode, setVoucherCode] = useState('')
@@ -684,6 +688,30 @@ export default function CashierPage() {
     setIsProcessing(true)
     
     try {
+      // Re-cek stok terbaru untuk setiap item agar tidak oversell
+      const latestProducts = await Promise.all(
+        cart.map(async (item) => {
+          const res = await fetch(`/api/products/${item.id}`)
+          if (!res.ok) {
+            throw new Error('Gagal mengambil data produk terbaru')
+          }
+          return res.json()
+        })
+      )
+
+      for (const latest of latestProducts) {
+        const cartItem = cart.find(ci => ci.id === latest.id)
+        if (!cartItem) continue
+        if (latest.stock === 0) {
+          toast.error(`Stok habis untuk ${latest.name}`)
+          return
+        }
+        if (cartItem.quantity > latest.stock) {
+          toast.error(`Stok tidak mencukupi untuk ${latest.name}. Tersisa ${latest.stock}.`)
+          return
+        }
+      }
+
       const totals = calculateTotal()
       const transactionData = {
         items: cart.map(item => ({
@@ -707,7 +735,9 @@ export default function CashierPage() {
         memberId: member?.id || null,
         // Add cash payment data
         cashAmount: paymentMethod === 'CASH' ? cashAmount : null,
-        changeAmount: paymentMethod === 'CASH' ? changeAmount : null
+        changeAmount: paymentMethod === 'CASH' ? changeAmount : null,
+        // Require manual confirmation for CARD to show modal and defer stock
+        requiresConfirmation: paymentMethod === 'CARD' ? true : false
       }
       
       // Handle Midtrans payment
@@ -778,12 +808,13 @@ export default function CashierPage() {
       }
       
       // Proses pembayaran normal untuk metode lain
+      const pendingForConfirmation = (paymentMethod === 'BANK_TRANSFER' || paymentMethod === 'QRIS' || paymentMethod === 'CARD')
       const response = await fetch('/api/transactions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(transactionData)
+        body: JSON.stringify(pendingForConfirmation ? { ...transactionData, status: 'PENDING', paymentStatus: 'PENDING' } : transactionData)
       })
       
       if (!response.ok) {
@@ -814,6 +845,12 @@ export default function CashierPage() {
       if (paymentMethod === 'BANK_TRANSFER') {
         setBankTransferTransaction(transactionWithItems)
         setShowBankTransferModal(true)
+      } else if (paymentMethod === 'QRIS') {
+        setQrisTransaction(transactionWithItems)
+        setShowQrisModal(true)
+      } else if (paymentMethod === 'CARD') {
+        setCardTransaction(transactionWithItems)
+        setShowCardModal(true)
       } else {
         setCompletedTransaction(transactionWithItems)
         setShowTransactionModal(true)
@@ -1732,7 +1769,7 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                     {[
                       { value: 'CASH', label: 'Tunai', icon: BanknotesIcon },
                       { value: 'CARD', label: 'Kartu Debit/Kredit', icon: CreditCardIcon },
-                      { value: 'DIGITAL_WALLET', label: 'Dompet Digital', icon: DevicePhoneMobileIcon },
+                      { value: 'QRIS', label: 'QRIS', icon: DevicePhoneMobileIcon },
                       { value: 'BANK_TRANSFER', label: 'Transfer Bank', icon: BuildingLibraryIcon },
                       { value: 'MIDTRANS', label: 'Midtrans Payment Gateway', icon: CreditCardIcon }
                     ].map(method => {
@@ -1894,7 +1931,7 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                     <p className="text-sm text-gray-900">
                       {completedTransaction.paymentMethod === 'CASH' ? 'Tunai' :
                        completedTransaction.paymentMethod === 'CARD' ? 'Kartu' :
-                       completedTransaction.paymentMethod === 'DIGITAL_WALLET' ? 'Dompet Digital' :
+                       completedTransaction.paymentMethod === 'QRIS' ? 'QRIS' :
                        completedTransaction.paymentMethod === 'BANK_TRANSFER' ? 'Transfer Bank' :
                        completedTransaction.paymentMethod === 'MIDTRANS' ? 'Midtrans Payment Gateway' :
                        'Metode Lain'}
@@ -2047,7 +2084,10 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="p-6 space-y-6">
               <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-gray-900">Instruksi Transfer Bank</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-2xl font-bold text-gray-900">Instruksi Transfer Bank</h2>
+                  <span className="inline-flex items-center rounded-full bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5">Menunggu Konfirmasi</span>
+                </div>
                 <button
                   onClick={() => setShowBankTransferModal(false)}
                   className="text-gray-500 hover:text-gray-700 transition-colors"
@@ -2140,21 +2180,22 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                 <button
                   onClick={async () => {
                     try {
-                      // Update transaction status to COMPLETED
-                      const response = await fetch(`/api/transactions/${bankTransferTransaction.id}`, {
-                        method: 'PATCH',
+                      // Panggil API konfirmasi BANK_TRANSFER yang sekaligus mengurangi stok
+                      const response = await fetch('/api/payments/bank-transfer/confirm', {
+                        method: 'POST',
                         headers: {
                           'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify({
-                          status: 'COMPLETED'
-                        })
+                        body: JSON.stringify({ transactionId: bankTransferTransaction.id })
                       })
 
                       if (response.ok) {
                         toast.success('Pembayaran berhasil dikonfirmasi!')
+                        // Tampilkan modal sukses transaksi
+                        setCompletedTransaction({ ...bankTransferTransaction })
+                        setShowTransactionModal(true)
                         setShowBankTransferModal(false)
-                        // Clear cart and reset form
+                        // Clear cart dan reset form
                         clearCart()
                         setCustomerName('')
                         setCustomerPhone('')
@@ -2168,7 +2209,8 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                         setPromotionDiscount(0)
                         setBankTransferTransaction(null)
                       } else {
-                        toast.error('Gagal mengkonfirmasi pembayaran')
+                        const errorData = await response.json()
+                        toast.error(errorData.message || 'Gagal mengkonfirmasi pembayaran')
                       }
                     } catch (error) {
                       console.error('Error confirming payment:', error)
@@ -2187,6 +2229,190 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                   Tutup
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QRIS Payment Modal */}
+      {showQrisModal && qrisTransaction && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4">
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-semibold text-gray-900">Konfirmasi Pembayaran QRIS</h2>
+                <span className="inline-flex items-center rounded-full bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5">Menunggu Konfirmasi</span>
+              </div>
+              <button onClick={() => setShowQrisModal(false)} className="text-gray-400 hover:text-gray-600">
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm font-medium text-gray-500">ID Transaksi</p>
+                  <p className="text-sm font-medium text-gray-900">{qrisTransaction.id}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Tanggal</p>
+                  <p className="text-sm text-gray-900">{new Date(qrisTransaction.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Total Pembayaran</p>
+                  <p className="text-sm font-medium text-green-600">{formatCurrency(qrisTransaction.total)}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Metode</p>
+                  <p className="text-sm text-gray-900">QRIS</p>
+                </div>
+              </div>
+
+              <div className="border border-gray-200 rounded-lg p-4">
+                <h3 className="font-medium text-gray-900 mb-2">Instruksi</h3>
+                <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
+                  <li>Minta pelanggan melakukan pembayaran QRIS menggunakan QR statis toko.</li>
+                  <li>Pastikan nominal yang dibayar sesuai: <span className="font-medium text-green-600">{formatCurrency(qrisTransaction.total)}</span>.</li>
+                  <li>Verifikasi dana telah masuk ke akun toko.</li>
+                  <li>Tekan tombol Konfirmasi Pembayaran untuk menyelesaikan transaksi.</li>
+                </ol>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 p-6 border-t border-gray-200">
+              <button
+                onClick={async () => {
+                  try {
+                    const response = await fetch('/api/payments/qris/confirm', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ transactionId: qrisTransaction.id })
+                    })
+                    if (response.ok) {
+                      toast.success('Pembayaran QRIS berhasil dikonfirmasi!')
+                      // Tampilkan modal sukses transaksi
+                      setCompletedTransaction({ ...qrisTransaction })
+                      setShowTransactionModal(true)
+                      setShowQrisModal(false)
+                      clearCart()
+                      setCustomerName('')
+                      setCustomerPhone('')
+                      setCustomerEmail('')
+                      setMember(null)
+                      setPointsToUse(0)
+                      setVoucherCode('')
+                      setAppliedVoucher(null)
+                      setVoucherDiscount(0)
+                      setAppliedPromotions([])
+                      setPromotionDiscount(0)
+                      setQrisTransaction(null)
+                    } else {
+                      const errorData = await response.json()
+                      toast.error(errorData.message || 'Gagal mengkonfirmasi pembayaran QRIS')
+                    }
+                  } catch (error) {
+                    console.error('Error confirming QRIS payment:', error)
+                    toast.error('Terjadi kesalahan saat mengkonfirmasi pembayaran QRIS')
+                  }
+                }}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
+              >
+                <CheckCircleIcon className="h-5 w-5 mr-2" />
+                Konfirmasi Pembayaran
+              </button>
+              <button
+                onClick={() => setShowQrisModal(false)}
+                className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CARD Payment Modal */}
+      {showCardModal && cardTransaction && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-semibold text-gray-900">Konfirmasi Pembayaran Kartu</h3>
+                <span className="inline-flex items-center rounded-full bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5">Menunggu Konfirmasi</span>
+              </div>
+              <button onClick={() => setShowCardModal(false)} className="text-gray-400 hover:text-gray-600">
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+            <div className="mt-3">
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Total Pembayaran</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatCurrency(cardTransaction.total)}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Metode</p>
+                  <p className="text-sm text-gray-900">Kartu Debit/Kredit</p>
+                </div>
+              </div>
+
+              <div className="border border-gray-200 rounded-lg p-4">
+                <h3 className="font-medium text-gray-900 mb-2">Instruksi</h3>
+                <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
+                  <li>Proses pembayaran menggunakan mesin EDC atau aplikasi kartu.</li>
+                  <li>Pastikan nominal yang dibayar sesuai: <span className="font-medium text-green-600">{formatCurrency(cardTransaction.total)}</span>.</li>
+                  <li>Verifikasi transaksi sukses pada mesin EDC/aplikasi.</li>
+                  <li>Tekan tombol Konfirmasi Pembayaran untuk menyelesaikan transaksi dan mengurangi stok.</li>
+                </ol>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 p-6 border-t border-gray-200">
+              <button
+                onClick={async () => {
+                  try {
+                    const response = await fetch('/api/payments/card/confirm', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ transactionId: cardTransaction.id })
+                    })
+                    if (response.ok) {
+                      toast.success('Pembayaran Kartu berhasil dikonfirmasi!')
+                      // Tampilkan modal sukses transaksi
+                      setCompletedTransaction({ ...cardTransaction })
+                      setShowTransactionModal(true)
+                      setShowCardModal(false)
+                      clearCart()
+                      setCustomerName('')
+                      setCustomerPhone('')
+                      setCustomerEmail('')
+                      setMember(null)
+                      setPointsToUse(0)
+                      setVoucherCode('')
+                      setAppliedVoucher(null)
+                      setVoucherDiscount(0)
+                      setAppliedPromotions([])
+                      setPromotionDiscount(0)
+                      setCardTransaction(null)
+                    } else {
+                      const errorData = await response.json()
+                      toast.error(errorData.message || 'Gagal mengkonfirmasi pembayaran Kartu')
+                    }
+                  } catch (error) {
+                    console.error('Error confirming CARD payment:', error)
+                    toast.error('Terjadi kesalahan saat mengkonfirmasi pembayaran Kartu')
+                  }
+                }}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
+              >
+                <CheckCircleIcon className="h-5 w-5 mr-2" />
+                Konfirmasi Pembayaran
+              </button>
+              <button
+                onClick={() => setShowCardModal(false)}
+                className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors"
+              >
+                Tutup
+              </button>
             </div>
           </div>
         </div>

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import db from '@/models'
+import { Op } from 'sequelize'
 
 interface CartItem {
   productId: string
@@ -20,13 +21,12 @@ interface Voucher {
   value: number
   minPurchase?: number | null
   maxDiscount?: number | null
-  usageLimit?: number | null
-  usageCount: number
-  perUserLimit?: number | null
+  maxUses?: number | null
+  usedCount: number
   startDate: Date
   endDate: Date
   isActive: boolean
-  transactions: any[]
+  usages?: any[]
 }
 
 export async function POST(request: NextRequest) {
@@ -46,38 +46,40 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Find voucher by code (case insensitive)
-    const voucher = await prisma.voucher.findFirst({
-      where: { 
-        code: { 
-          equals: code,
-          mode: 'insensitive'
-        }
-      },
-      select: {
-        id: true,
-        code: true,
-        name: true,
-        type: true,
-        value: true,
-        minPurchase: true,
-        maxDiscount: true,
-        usageLimit: true,
-        usageCount: true,
-        perUserLimit: true,
-        startDate: true,
-        endDate: true,
-        isActive: true,
-        transactions: {
+    // Find voucher by code (case insensitive, SQLite-compatible)
+    const voucher = await db.Voucher.findOne({
+      where: (db as any).sequelize.where(
+        (db as any).sequelize.fn('LOWER', (db as any).sequelize.col('code')),
+        (code as string).toLowerCase()
+      ),
+      attributes: [
+        'id',
+        'code',
+        'name',
+        'type',
+        'value',
+        'minPurchase',
+        'maxDiscount',
+        'maxUses',
+        'usedCount',
+        'startDate',
+        'endDate',
+        'isActive'
+      ],
+      include: [
+        {
+          model: (db as any).VoucherUsage,
+          as: 'usages',
           where: {
-            OR: [
-              { userId: userId || undefined },
-              { memberId: memberId || undefined }
-            ].filter(condition => Object.values(condition).some(value => value !== undefined))
-          }
+            [Op.or]: [
+              { userId: userId || null },
+              { memberId: memberId || null }
+            ].filter(condition => Object.values(condition).some(value => value !== null))
+          },
+          required: false
         }
-      }
-    })
+      ]
+    } as any)
     
     // Ensure we have the voucher
     if (!voucher) {
@@ -88,7 +90,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if voucher is active
-    if (!voucher.isActive) {
+    if (!(voucher as any).isActive) {
       return NextResponse.json(
         { error: 'Voucher is not active', valid: false },
         { status: 400 }
@@ -97,7 +99,7 @@ export async function POST(request: NextRequest) {
 
     // Check if voucher is within valid date range
     const now = new Date()
-    if (now < voucher.startDate || now > voucher.endDate) {
+    if (now < (voucher as any).startDate || now > (voucher as any).endDate) {
       return NextResponse.json(
         { error: 'Voucher is expired or not yet valid', valid: false },
         { status: 400 }
@@ -105,19 +107,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Check minimum purchase requirement
-    if (voucher.minPurchase && subtotal < voucher.minPurchase) {
+    if ((voucher as any).minPurchase && subtotal < (voucher as any).minPurchase) {
       return NextResponse.json(
         {
-          error: `Minimum purchase of ${voucher.minPurchase} required`,
+          error: `Minimum purchase of ${(voucher as any).minPurchase} required`,
           valid: false,
-          minPurchase: voucher.minPurchase
+          minPurchase: (voucher as any).minPurchase
         },
         { status: 400 }
       )
     }
 
     // Check total usage limit
-    if (voucher.usageLimit && voucher.usageCount >= voucher.usageLimit) {
+    if ((voucher as any).maxUses && (voucher as any).usedCount >= (voucher as any).maxUses) {
       return NextResponse.json(
         { error: 'Voucher usage limit exceeded', valid: false },
         { status: 400 }
@@ -125,11 +127,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Check per-user usage limit (only for members, not for guest transactions)
-    if (voucher.perUserLimit && (userId || memberId)) {
-      const userUsageCount = voucher.transactions.length
-      if (userUsageCount >= voucher.perUserLimit) {
+    if ((voucher as any).usages && (userId || memberId)) {
+      const userUsageCount = (voucher as any).usages.length
+      if (userUsageCount >= 1) { // Simplified check for now
         return NextResponse.json(
-          { error: `Personal usage limit exceeded (${userUsageCount}/${voucher.perUserLimit})`, valid: false },
+          { error: `Personal usage limit exceeded`, valid: false },
           { status: 400 }
         )
       }
@@ -137,27 +139,27 @@ export async function POST(request: NextRequest) {
 
     // Calculate discount amount
     let discountAmount = 0
-    if (voucher.type === 'PERCENTAGE') {
-      discountAmount = (subtotal * voucher.value) / 100
-      if (voucher.maxDiscount && discountAmount > voucher.maxDiscount) {
-        discountAmount = voucher.maxDiscount
+    if ((voucher as any).type === 'PERCENTAGE') {
+      discountAmount = (subtotal * (voucher as any).value) / 100
+      if ((voucher as any).maxDiscount && discountAmount > (voucher as any).maxDiscount) {
+        discountAmount = (voucher as any).maxDiscount
       }
-    } else if (voucher.type === 'FIXED_AMOUNT') {
-      discountAmount = Math.min(voucher.value, subtotal)
-    } else if (voucher.type === 'FREE_SHIPPING') {
+    } else if ((voucher as any).type === 'FIXED_AMOUNT') {
+      discountAmount = Math.min((voucher as any).value, subtotal)
+    } else if ((voucher as any).type === 'FREE_SHIPPING') {
       // For POS system, this might be a fixed shipping cost
-      discountAmount = voucher.value
+      discountAmount = (voucher as any).value
     }
 
     return NextResponse.json({
       valid: true,
       voucher: {
-        id: voucher.id,
-        code: voucher.code,
-        name: voucher.name,
-        type: voucher.type,
-        value: voucher.value,
-        maxDiscount: voucher.maxDiscount
+        id: (voucher as any).id,
+        code: (voucher as any).code,
+        name: (voucher as any).name,
+        type: (voucher as any).type,
+        value: (voucher as any).value,
+        maxDiscount: (voucher as any).maxDiscount
       },
       discountAmount: Math.round(discountAmount * 100) / 100
     })

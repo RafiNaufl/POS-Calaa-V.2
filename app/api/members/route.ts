@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import db from '@/models'
+import { Op } from 'sequelize'
 
 // GET - Fetch all members
 export async function GET(request: NextRequest) {
@@ -8,33 +9,50 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search')
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '10')
-    const skip = (page - 1) * limit
+    const offset = (page - 1) * limit
 
     const where = search ? {
-      OR: [
-        { name: { contains: search, mode: 'insensitive' as const } },
-        { phone: { contains: search, mode: 'insensitive' as const } },
-        { email: { contains: search, mode: 'insensitive' as const } }
+      [Op.or]: [
+        { name: { [Op.like]: `%${search}%` } },
+        { phone: { [Op.like]: `%${search}%` } },
+        { email: { [Op.like]: `%${search}%` } }
       ]
     } : {}
 
     const [members, total] = await Promise.all([
-      prisma.member.findMany({
+      db.Member.findAll({
         where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          _count: {
-            select: { transactions: true }
-          }
+        offset,
+        limit,
+        order: [["createdAt", "DESC"]],
+        attributes: {
+          include: [
+            [
+              db.sequelize.literal('(SELECT COUNT(*) FROM "Transaction" AS t WHERE t.memberId = "Member"."id")'),
+              'transactionCount'
+            ]
+          ]
         }
       }),
-      prisma.member.count({ where })
+      db.Member.count({ where })
     ])
 
+    // Sanitize numeric fields for each member
+    const sanitizedMembers = members.map((member: any) => {
+      const m = member?.get ? member.get({ plain: true }) : member
+      const pointsNum = typeof m.points === 'number' ? m.points : parseInt(String(m.points ?? '0'), 10)
+      const totalSpentNum = typeof m.totalSpent === 'number' ? m.totalSpent : parseFloat(String(m.totalSpent ?? '0'))
+      const transactionCountNum = typeof m.transactionCount === 'number' ? m.transactionCount : parseInt(String(m.transactionCount ?? '0'), 10)
+      return {
+        ...m,
+        points: Number.isNaN(pointsNum) ? 0 : pointsNum,
+        totalSpent: Number.isNaN(totalSpentNum) ? 0 : totalSpentNum,
+        transactionCount: Number.isNaN(transactionCountNum) ? 0 : transactionCountNum
+      }
+    })
+
     return NextResponse.json({
-      members,
+      members: sanitizedMembers,
       pagination: {
         page,
         limit,
@@ -55,41 +73,60 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { name, phone, email } = body
+    const { name, phone, email, address, dateOfBirth } = body
 
-    if (!name) {
+    // Validate required fields
+    if (!name || !phone) {
       return NextResponse.json(
-        { error: 'Name is required' },
+        { error: 'Name and phone are required' },
         { status: 400 }
       )
     }
 
-    // Check if member already exists
-    const existingMember = await prisma.member.findFirst({
-      where: {
-        OR: [
-          phone ? { phone } : {},
-          email ? { email } : {}
-        ].filter(condition => Object.keys(condition).length > 0)
-      }
+    // Check if phone already exists
+    const existingMember = await db.Member.findOne({
+      where: { phone }
     })
 
     if (existingMember) {
       return NextResponse.json(
-        { error: 'Member with this phone or email already exists' },
+        { error: 'Phone number already exists' },
         { status: 400 }
       )
     }
 
-    const member = await prisma.member.create({
-      data: {
-        name,
-        phone: phone || null,
-        email: email || null
+    // Check if email already exists (if provided)
+    if (email) {
+      const existingEmail = await db.Member.findOne({
+        where: { email }
+      })
+
+      if (existingEmail) {
+        return NextResponse.json(
+          { error: 'Email already exists' },
+          { status: 400 }
+        )
       }
+    }
+
+    const member = await db.Member.create({
+      name,
+      phone,
+      email,
+      address,
+      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null
     })
 
-    return NextResponse.json(member, { status: 201 })
+    // Sanitize before returning
+    const m = (member as any)?.get ? (member as any).get({ plain: true }) : (member as any)
+    const pointsNum = typeof m.points === 'number' ? m.points : parseInt(String(m.points ?? '0'), 10)
+    const totalSpentNum = typeof m.totalSpent === 'number' ? m.totalSpent : parseFloat(String(m.totalSpent ?? '0'))
+
+    return NextResponse.json({
+      ...m,
+      points: Number.isNaN(pointsNum) ? 0 : pointsNum,
+      totalSpent: Number.isNaN(totalSpentNum) ? 0 : totalSpentNum
+    }, { status: 201 })
   } catch (error) {
     console.error('Error creating member:', error)
     return NextResponse.json(
@@ -103,7 +140,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json()
-    const { id, name, phone, email, points } = body
+    const { id, name, phone, email, address, dateOfBirth } = body
 
     if (!id) {
       return NextResponse.json(
@@ -112,18 +149,69 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    const member = await prisma.member.update({
-      where: { id },
-      data: {
-        name,
-        phone: phone || null,
-        email: email || null,
-        points: points !== undefined ? points : undefined,
-        lastVisit: new Date()
-      }
-    })
+    // Check if phone already exists for another member
+    if (phone) {
+      const existingMember = await db.Member.findOne({
+        where: { 
+          phone,
+          id: { [Op.ne]: id }
+        }
+      })
 
-    return NextResponse.json(member)
+      if (existingMember) {
+        return NextResponse.json(
+          { error: 'Phone number already exists' },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Check if email already exists for another member (if provided)
+    if (email) {
+      const existingEmail = await db.Member.findOne({
+        where: { 
+          email,
+          id: { [Op.ne]: id }
+        }
+      })
+
+      if (existingEmail) {
+        return NextResponse.json(
+          { error: 'Email already exists' },
+          { status: 400 }
+        )
+      }
+    }
+
+    const [updatedRowsCount] = await db.Member.update(
+      {
+        name,
+        phone,
+        email,
+        address,
+        dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null
+      },
+      {
+        where: { id }
+      }
+    )
+
+    if (updatedRowsCount === 0) {
+      return NextResponse.json(
+        { error: 'Member not found' },
+        { status: 404 }
+      )
+    }
+
+    const member = await db.Member.findByPk(id)
+    const m = (member as any)?.get ? (member as any).get({ plain: true }) : (member as any)
+    const pointsNum = typeof m.points === 'number' ? m.points : parseInt(String(m.points ?? '0'), 10)
+    const totalSpentNum = typeof m.totalSpent === 'number' ? m.totalSpent : parseFloat(String(m.totalSpent ?? '0'))
+    return NextResponse.json({
+      ...m,
+      points: Number.isNaN(pointsNum) ? 0 : pointsNum,
+      totalSpent: Number.isNaN(totalSpentNum) ? 0 : totalSpentNum
+    })
   } catch (error) {
     console.error('Error updating member:', error)
     return NextResponse.json(
@@ -136,19 +224,8 @@ export async function PUT(request: NextRequest) {
 // DELETE - Delete member
 export async function DELETE(request: NextRequest) {
   try {
-    // Check if ID is in URL params first
     const searchParams = request.nextUrl.searchParams
-    let id = searchParams.get('id')
-
-    // If not in URL params, try to get from request body
-    if (!id) {
-      try {
-        const body = await request.json()
-        id = body.id
-      } catch (e) {
-        // If parsing body fails, continue with null id
-      }
-    }
+    const id = searchParams.get('id')
 
     if (!id) {
       return NextResponse.json(
@@ -157,26 +234,28 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    // Check if member has transactions before deleting
-    const memberWithTransactions = await prisma.member.findUnique({
-      where: { id },
-      include: {
-        _count: {
-          select: { transactions: true }
-        }
-      }
+    // Check if member has transactions
+    const transactionCount = await db.Transaction.count({
+      where: { memberId: id }
     })
 
-    if (memberWithTransactions && memberWithTransactions._count && memberWithTransactions._count.transactions > 0) {
+    if (transactionCount > 0) {
       return NextResponse.json(
-        { error: 'Cannot delete member with transaction history' },
+        { error: 'Cannot delete member with existing transactions' },
         { status: 400 }
       )
     }
 
-    await prisma.member.delete({
+    const deletedRowsCount = await db.Member.destroy({
       where: { id }
     })
+
+    if (deletedRowsCount === 0) {
+      return NextResponse.json(
+        { error: 'Member not found' },
+        { status: 404 }
+      )
+    }
 
     return NextResponse.json({ message: 'Member deleted successfully' })
   } catch (error) {

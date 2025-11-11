@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+const db = require('@/models')
 import { revalidatePath } from 'next/cache'
 
 export async function POST(request: NextRequest) {
   try {
     // Hapus semua data transaksi
-    await prisma.transactionItem.deleteMany({})
-    await prisma.voucherUsage.deleteMany({})
-    await prisma.pointHistory.deleteMany({})
-    await prisma.transaction.deleteMany({})
+    await db.TransactionItem.destroy({ where: {} })
+    await db.VoucherUsage.destroy({ where: {} })
+    await db.Transaction.destroy({ where: {} })
     
     // Revalidate dashboard path to clear cache
     revalidatePath('/dashboard')
@@ -27,7 +26,5 @@ export async function POST(request: NextRequest) {
       { error: 'Gagal mereset data transaksi' },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }

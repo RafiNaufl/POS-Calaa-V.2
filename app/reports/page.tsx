@@ -114,6 +114,15 @@ export default function ReportsPage() {
   const [cashierPerformance, setCashierPerformance] = useState<any[]>([])
   const [promotionAnalysis, setPromotionAnalysis] = useState<PromotionAnalysisItem[]>([])
   const [returnData, setReturnData] = useState<any>({totalReturns: 0, totalReturnAmount: 0, returnRate: 0})
+  const [operationalData, setOperationalData] = useState<any>({
+    operatingExpenses: [],
+    totalOperatingExpenses: 0,
+    operatingProfit: 0,
+    operatingProfitMargin: 0,
+    grossSales: 0,
+    netSales: 0
+  })
+  const expenseColorPalette = ['#4f46e5','#0891b2','#059669','#d97706','#7c3aed','#f43f5e','#0ea5e9','#22c55e','#f59e0b','#a855f7']
 
   // Fetch real-time data from API
   useEffect(() => {
@@ -193,6 +202,49 @@ export default function ReportsPage() {
             setWeekdayAnalysis(data.weekdayAnalysis || [])
             setPaymentMethodAnalysis(data.paymentMethodAnalysis || [])
             setPromotionAnalysis(data.promotionAnalysis || [])
+            // Fetch operational expenses from financial API
+            try {
+              const finRes = await fetch(`/api/reports/financial?range=${dateRange}`)
+              if (finRes.ok) {
+                const finData = await finRes.json()
+                const op = finData?.profitability?.operatingExpenses || {}
+                const total = finData?.profitability?.totalOperatingExpenses || 0
+                const opProfit = finData?.profitability?.operatingProfit || 0
+                const opMargin = finData?.profitability?.operatingProfitMargin || 0
+                const entries = Object.entries(op).map(([name, value], idx) => ({
+                  name,
+                  value: Number(value) || 0,
+                  color: expenseColorPalette[idx % expenseColorPalette.length]
+                }))
+                setOperationalData({
+                  operatingExpenses: entries,
+                  totalOperatingExpenses: Number(total) || 0,
+                  operatingProfit: Number(opProfit) || 0,
+                  operatingProfitMargin: Number(opMargin) || 0,
+                  grossSales: Number(finData?.revenue?.grossSales ?? 0),
+                  netSales: Number(finData?.revenue?.netSales ?? 0)
+                })
+              } else {
+                setOperationalData({
+                  operatingExpenses: [],
+                  totalOperatingExpenses: 0,
+                  operatingProfit: 0,
+                  operatingProfitMargin: 0,
+                  grossSales: 0,
+                  netSales: 0
+                })
+              }
+            } catch (e) {
+              console.error('Error fetching financial data:', e)
+              setOperationalData({
+                operatingExpenses: [],
+                totalOperatingExpenses: 0,
+                operatingProfit: 0,
+                operatingProfitMargin: 0,
+                grossSales: 0,
+                netSales: 0
+              })
+            }
           } else {
             // Reset advanced analytics data when using basic analysis
             setRfmAnalysis(null)
@@ -201,6 +253,12 @@ export default function ReportsPage() {
             setWeekdayAnalysis([])
             setPaymentMethodAnalysis([])
             setPromotionAnalysis([])
+            setOperationalData({
+              operatingExpenses: [],
+              totalOperatingExpenses: 0,
+              operatingProfit: 0,
+              operatingProfitMargin: 0
+            })
           }
         } else {
           console.error('Failed to fetch report data')
@@ -894,7 +952,7 @@ export default function ReportsPage() {
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                   {method.method === 'CASH' ? 'Tunai' :
                                    method.method === 'CARD' ? 'Kartu' :
-                                   method.method === 'DIGITAL_WALLET' ? 'Dompet Digital' :
+                                   method.method === 'QRIS' ? 'QRIS' :
                                    method.method}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -1414,7 +1472,7 @@ export default function ReportsPage() {
                       <div className="ml-4">
                         <p className="text-sm font-medium text-gray-500">Total Biaya Operasional</p>
                         <p className="text-2xl font-semibold text-gray-900">
-                          {formatCurrency(125000000)}
+                          {formatCurrency(operationalData.totalOperatingExpenses || 0)}
                         </p>
                       </div>
                     </div>
@@ -1429,7 +1487,7 @@ export default function ReportsPage() {
                       <div className="ml-4">
                         <p className="text-sm font-medium text-gray-500">Rasio Biaya-Pendapatan</p>
                         <p className="text-2xl font-semibold text-gray-900">
-                          {(125000000 / (summary.totalSales || 1) * 100).toFixed(1)}%
+                          {(operationalData.grossSales > 0 ? ((operationalData.totalOperatingExpenses || 0) / operationalData.grossSales) * 100 : 0).toFixed(1)}%
                         </p>
                         <p className="text-xs text-gray-500">
                           dari total penjualan
@@ -1447,7 +1505,7 @@ export default function ReportsPage() {
                       <div className="ml-4">
                         <p className="text-sm font-medium text-gray-500">Margin Keuntungan</p>
                         <p className="text-2xl font-semibold text-gray-900">
-                          {(100 - (125000000 / (summary.totalSales || 1) * 100)).toFixed(1)}%
+                          {(Number.isFinite(operationalData.operatingProfitMargin) ? operationalData.operatingProfitMargin : 0).toFixed(1)}%
                         </p>
                       </div>
                     </div>
@@ -1463,29 +1521,17 @@ export default function ReportsPage() {
                     <ResponsiveContainer width="100%" height={300}>
                       <PieChart>
                         <Pie
-                          data={[
-                            { name: 'Gaji Karyawan', value: 75000000, color: '#4f46e5' },
-                            { name: 'Sewa Tempat', value: 25000000, color: '#0891b2' },
-                            { name: 'Utilitas', value: 10000000, color: '#059669' },
-                            { name: 'Pemasaran', value: 8000000, color: '#d97706' },
-                            { name: 'Lain-lain', value: 7000000, color: '#7c3aed' }
-                          ]}
+                          data={operationalData.operatingExpenses}
                           cx="50%"
                           cy="50%"
                           labelLine={false}
-                          label={({ name, value }) => `${name} ${((value / 125000000) * 100).toFixed(1)}%`}
+                          label={({ name, value }) => `${name} ${(operationalData.totalOperatingExpenses > 0 ? (((value as number) / operationalData.totalOperatingExpenses) * 100) : 0).toFixed(1)}%`}
                           outerRadius={80}
                           fill="#8884d8"
                           dataKey="value"
                           nameKey="name"
                         >
-                          {[
-                            { name: 'Gaji Karyawan', value: 75000000, color: '#4f46e5' },
-                            { name: 'Sewa Tempat', value: 25000000, color: '#0891b2' },
-                            { name: 'Utilitas', value: 10000000, color: '#059669' },
-                            { name: 'Pemasaran', value: 8000000, color: '#d97706' },
-                            { name: 'Lain-lain', value: 7000000, color: '#7c3aed' }
-                          ].map((entry, index) => (
+                          {operationalData.operatingExpenses.map((entry: any, index: number) => (
                             <Cell key={`cell-${index}`} fill={entry.color} />
                           ))}
                         </Pie>
@@ -1506,14 +1552,8 @@ export default function ReportsPage() {
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                          {[
-                            { name: 'Gaji Karyawan', value: 75000000, color: '#4f46e5' },
-                            { name: 'Sewa Tempat', value: 25000000, color: '#0891b2' },
-                            { name: 'Utilitas', value: 10000000, color: '#059669' },
-                            { name: 'Pemasaran', value: 8000000, color: '#d97706' },
-                            { name: 'Lain-lain', value: 7000000, color: '#7c3aed' }
-                          ].map((category, index) => {
-                            const percentage = (category.value / 125000000) * 100;
+                          {operationalData.operatingExpenses.map((category: any, index: number) => {
+                            const percentage = operationalData.totalOperatingExpenses > 0 ? (((category.value || 0) / operationalData.totalOperatingExpenses) * 100) : 0;
                             return (
                               <tr key={`expense-${index}`}>
                                 <td className="px-6 py-4 whitespace-nowrap">
@@ -1526,7 +1566,7 @@ export default function ReportsPage() {
                                   </div>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                  {formatCurrency(category.value)}
+                                  {formatCurrency(category.value || 0)}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                   <div className="flex items-center">

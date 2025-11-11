@@ -1,43 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import db from '@/models'
 
-export async function GET(request: NextRequest) {
-  
+export async function GET() {
   try {
-    const categories = await prisma.category.findMany({
-      include: {
-        _count: {
-          select: {
-            products: true
-          }
-        }
-      },
-      orderBy: {
-        name: 'asc'
-      }
+    console.log('API /api/categories GET invoked')
+    const categories = await db.Category.findAll({
+      include: [{ model: db.Product, as: 'products', attributes: [], required: false }],
+      attributes: { include: [[db.sequelize.fn('COUNT', db.sequelize.fn('DISTINCT', db.sequelize.col('products.id'))), 'productCount']] },
+      group: ['Category.id'],
+      order: [['name', 'ASC']],
+      subQuery: false
     })
-
     return NextResponse.json(categories)
   } catch (error) {
     console.error('Error fetching categories:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch categories' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}  
-
+}
 export async function POST(request: NextRequest) {
   
   try {
     const body = await request.json()
     const { name, description } = body
 
-    const category = await prisma.category.create({
-      data: {
-        name,
-        description
-      }
+    const category = await db.Category.create({
+      name,
+      description
     })
 
     return NextResponse.json(category, { status: 201 })
@@ -63,14 +51,24 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    const category = await prisma.category.update({
-      where: { id },
-      data: {
+    const [updatedRowsCount] = await db.Category.update(
+      {
         name,
         description
+      },
+      {
+        where: { id }
       }
-    })
+    )
 
+    if (updatedRowsCount === 0) {
+      return NextResponse.json(
+        { error: 'Category not found' },
+        { status: 404 }
+      )
+    }
+
+    const category = await db.Category.findByPk(id)
     return NextResponse.json(category)
   } catch (error) {
     console.error('Error updating category:', error)
@@ -106,7 +104,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Check if category has products
-    const productsCount = await prisma.product.count({
+    const productsCount = await db.Product.count({
       where: { categoryId: id }
     })
 
@@ -117,9 +115,16 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    await prisma.category.delete({
+    const deletedRowsCount = await db.Category.destroy({
       where: { id }
     })
+
+    if (deletedRowsCount === 0) {
+      return NextResponse.json(
+        { error: 'Category not found' },
+        { status: 404 }
+      )
+    }
 
     return NextResponse.json({ message: 'Category deleted successfully' })
   } catch (error) {
@@ -130,3 +135,5 @@ export async function DELETE(request: NextRequest) {
       )
     }
   }
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'

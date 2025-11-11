@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+const db = require('@/models')
 import bcrypt from 'bcryptjs'
 
 export async function POST(request: NextRequest) {
   
   try {
     // Check if users already exist
-    const existingUsers = await prisma.user.count()
+    const existingUsers = await db.User.count()
     
     if (existingUsers > 0) {
       return NextResponse.json(
@@ -20,23 +20,19 @@ export async function POST(request: NextRequest) {
     const cashierPassword = await bcrypt.hash('kasir123', 12)
 
     // Create admin user
-    const admin = await prisma.user.create({
-      data: {
-        email: 'admin@pos.com',
-        name: 'Administrator',
-        password: adminPassword,
-        role: 'ADMIN'
-      }
+    const admin = await db.User.create({
+      email: 'admin@pos.com',
+      name: 'Administrator',
+      password: adminPassword,
+      role: 'ADMIN'
     })
 
     // Create cashier user
-    const cashier = await prisma.user.create({
-      data: {
-        email: 'kasir@pos.com',
-        name: 'Kasir',
-        password: cashierPassword,
-        role: 'CASHIER'
-      }
+    const cashier = await db.User.create({
+      email: 'kasir@pos.com',
+      name: 'Kasir',
+      password: cashierPassword,
+      role: 'CASHIER'
     })
 
     return NextResponse.json({
@@ -49,10 +45,8 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Seed error:', error)
     return NextResponse.json(
-      { message: 'Failed to create users', error: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }

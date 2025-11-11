@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import db from '@/models'
+import { Op } from 'sequelize'
 
 export async function GET(request: NextRequest) {
   try {
+    console.log('API /api/promotions GET invoked')
     const session = await getServerSession(authOptions)
+    console.log('API /api/promotions GET session', !!session)
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -22,9 +25,9 @@ export async function GET(request: NextRequest) {
       // Also check if promotion is within valid date range
       if (active === 'true') {
         const now = new Date()
-        whereClause.AND = [
-          { startDate: { lte: now } },
-          { endDate: { gte: now } }
+        whereClause[Op.and] = [
+          { startDate: { [Op.lte]: now } },
+          { endDate: { [Op.gte]: now } }
         ]
       }
     }
@@ -33,22 +36,28 @@ export async function GET(request: NextRequest) {
       whereClause.type = type
     }
 
-    const promotions = await prisma.promotion.findMany({
+    const promotions = await db.Promotion.findAll({
       where: whereClause,
-      include: {
-        productPromotions: {
-          include: {
-            product: true
-          }
+      include: [
+        {
+          model: db.ProductPromotion,
+          as: 'productPromotions',
+          include: [{
+            model: db.Product,
+            as: 'product'
+          }]
         },
-        categoryPromotions: {
-          include: {
-            category: true
-          }
+        {
+          model: db.CategoryPromotion,
+          as: 'categoryPromotions',
+          include: [{
+            model: db.Category,
+            as: 'category'
+          }]
         }
-      },
-      orderBy: [
-        { createdAt: 'desc' }
+      ],
+      order: [
+        ['createdAt', 'DESC']
       ]
     })
 
@@ -109,45 +118,68 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create promotion with related products and categories
-    const promotion = await prisma.promotion.create({
-      data: {
+    // Create promotion with related products and categories using transaction
+    const result = await db.sequelize.transaction(async (t: any) => {
+      // Create the promotion
+      const promotion = await db.Promotion.create({
         name,
         description,
         type,
         discountValue,
-        discountType, // Menambahkan discountType karena diperlukan oleh TypeScript
+        discountType,
         minQuantity,
         buyQuantity,
         getQuantity,
         startDate: startDate ? new Date(startDate) : new Date(),
         endDate: endDate ? new Date(endDate) : new Date(),
-        productPromotions: productIds ? {
-          create: productIds.map((productId: string) => ({
-            productId
-          }))
-        } : undefined,
-        categoryPromotions: categoryIds ? {
-          create: categoryIds.map((categoryId: string) => ({
-            categoryId
-          }))
-        } : undefined
-      },
-      include: {
-        productPromotions: {
-          include: {
-            product: true
-          }
-        },
-        categoryPromotions: {
-          include: {
-            category: true
-          }
-        }
+      }, { transaction: t })
+      const promotionId = (promotion as any).id
+
+      // Create product promotions if provided
+      if (productIds && productIds.length > 0) {
+        const productPromotions = productIds.map((productId: string) => ({
+          promotionId: promotionId,
+          productId
+        }))
+        await db.ProductPromotion.bulkCreate(productPromotions, { transaction: t })
       }
+
+      // Create category promotions if provided
+      if (categoryIds && categoryIds.length > 0) {
+        const categoryPromotions = categoryIds.map((categoryId: string) => ({
+          promotionId: promotionId,
+          categoryId
+        }))
+        await db.CategoryPromotion.bulkCreate(categoryPromotions, { transaction: t })
+      }
+
+      // Fetch the created promotion with associations
+      const createdPromotion = await db.Promotion.findByPk(promotionId, {
+        include: [
+          {
+            model: db.ProductPromotion,
+            as: 'productPromotions',
+            include: [{
+              model: db.Product,
+              as: 'product'
+            }]
+          },
+          {
+            model: db.CategoryPromotion,
+            as: 'categoryPromotions',
+            include: [{
+              model: db.Category,
+              as: 'category'
+            }]
+          }
+        ],
+        transaction: t
+      })
+
+      return createdPromotion
     })
 
-    return NextResponse.json(promotion, { status: 201 })
+    return NextResponse.json(result, { status: 201 })
   } catch (error) {
     console.error('Error creating promotion:', error)
     return NextResponse.json(
@@ -156,3 +188,6 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
