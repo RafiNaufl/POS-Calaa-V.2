@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import db from '@/models'
+import WhatsAppManager from '@/lib/whatsapp'
+import ReceiptFormatter, { TransactionWithRelations } from '@/lib/receiptFormatter'
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,43 +17,42 @@ export async function GET(request: NextRequest) {
     }
 
     // Ambil semua transaksi dengan relasi yang diperlukan
-    const transactions = await prisma.transaction.findMany({
-      include: {
-        items: {
-          include: {
-            product: true
-          }
-        },
-        user: {
-          select: {
-            name: true,
-            email: true
-          }
-        },
-        member: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            email: true,
-            points: true
-          }
-        },
-        voucherUsages: {
-          include: {
-            voucher: {
-              select: {
-                code: true,
-                name: true
-              }
+    const transactions = await db.Transaction.findAll({
+      include: [
+        {
+          model: (db as any).TransactionItem,
+          as: 'items',
+          include: [
+            {
+              model: (db as any).Product,
+              as: 'product'
             }
-          }
+          ]
+        },
+        {
+          model: (db as any).User,
+          as: 'user',
+          attributes: ['name', 'email']
+        },
+        {
+          model: (db as any).Member,
+          as: 'member',
+          attributes: ['id', 'name', 'phone', 'email', 'points']
+        },
+        {
+          model: (db as any).VoucherUsage,
+          as: 'voucherUsages',
+          include: [
+            {
+              model: (db as any).Voucher,
+              as: 'voucher',
+              attributes: ['code', 'name']
+            }
+          ]
         }
-      },
-      orderBy: {
-        createdAt: 'desc'
-      }
-    })
+      ],
+      order: [['createdAt', 'DESC']]
+    } as any)
 
     return NextResponse.json({ transactions })
   } catch (error) {
@@ -97,10 +98,7 @@ export async function POST(request: NextRequest) {
     
     // Verify that the user exists in the database
     try {
-      const userExists = await prisma.user.findUnique({
-        where: { id: session.user.id },
-        select: { id: true }
-      })
+      const userExists = await db.User.findByPk(session.user.id)
       
       if (!userExists) {
         console.error(`User not found in database in POST request. Session user ID: ${session.user.id}`)
@@ -133,7 +131,8 @@ export async function POST(request: NextRequest) {
       voucherDiscount, 
       promoDiscount, 
       promotionDiscount,
-      memberId
+      memberId,
+      requiresConfirmation
     } = body
     
     // Validate required fields
@@ -158,90 +157,60 @@ export async function POST(request: NextRequest) {
       )
     }
     
+    // Ensure transaction ID is set (use provided id or generate one)
+    transactionId = id || `TXN-${Date.now()}`
+    
     // Create transaction
-    const transactionData: any = {
+    console.log('[transactions:POST] create request', {
+      paymentMethod,
+      requiresConfirmation,
+      computedStatus: (paymentMethod === 'BANK_TRANSFER' || paymentMethod === 'MIDTRANS' || paymentMethod === 'QRIS' || (paymentMethod === 'CARD' && requiresConfirmation === true)) ? 'PENDING' : 'COMPLETED',
+      computedPaymentStatus: (paymentMethod === 'BANK_TRANSFER' || paymentMethod === 'MIDTRANS' || paymentMethod === 'QRIS' || (paymentMethod === 'CARD' && requiresConfirmation === true)) ? 'PENDING' : 'PAID'
+    })
+    const transaction = await (db as any).Transaction.create({
+      id: transactionId,
       userId: session.user.id,
+      memberId: memberId || null,
       total: parseFloat(subtotal.toString()), // Use subtotal as total
       tax: 0, // Set tax to 0 since we're removing tax feature
       finalTotal: parseFloat(total.toString()), // Required field in schema
       paymentMethod,
-      status: paymentMethod === 'BANK_TRANSFER' || paymentMethod === 'MIDTRANS' ? 'PENDING' : 'COMPLETED',
-      paymentStatus: paymentMethod === 'BANK_TRANSFER' || paymentMethod === 'MIDTRANS' ? 'PENDING' : 'PAID',
-      paidAt: paymentMethod === 'BANK_TRANSFER' || paymentMethod === 'MIDTRANS' ? null : new Date(),
+      status: (paymentMethod === 'BANK_TRANSFER' || paymentMethod === 'MIDTRANS' || paymentMethod === 'QRIS' || (paymentMethod === 'CARD' && requiresConfirmation === true)) ? 'PENDING' : 'COMPLETED',
+      paymentStatus: (paymentMethod === 'BANK_TRANSFER' || paymentMethod === 'MIDTRANS' || paymentMethod === 'QRIS' || (paymentMethod === 'CARD' && requiresConfirmation === true)) ? 'PENDING' : 'PAID',
+      paidAt: (paymentMethod === 'BANK_TRANSFER' || paymentMethod === 'MIDTRANS' || paymentMethod === 'QRIS' || (paymentMethod === 'CARD' && requiresConfirmation === true)) ? null : new Date(),
       customerName: customerName || null,
       customerPhone: customerPhone || null,
       customerEmail: customerEmail || null,
       pointsUsed: pointsUsed || 0,
       voucherDiscount: voucherDiscount || 0,
-      promoDiscount: promotionDiscount || promoDiscount || 0,
-      memberId: memberId || null,
-    };
+      promoDiscount: promotionDiscount || promoDiscount || 0
+    })
 
-    // Add custom ID if provided (for Midtrans)
-    if (id) {
-      transactionData.id = id;
+    console.log('[transactions:POST] created', { id: transaction.id, status: transaction.status, paymentStatus: transaction.paymentStatus })
+
+    // Create transaction items separately
+    for (const item of items) {
+      await (db as any).TransactionItem.create({
+        transactionId: transaction.id,
+        productId: item.productId,
+        quantity: item.quantity,
+        price: parseFloat(item.price.toString()),
+        subtotal: parseFloat(item.price.toString()) * item.quantity
+      })
     }
 
-    const transaction = await prisma.transaction.create({
-      data: {
-        ...transactionData,
-        items: {
-          create: items.map((item: any) => ({
-            productId: item.productId,
-            quantity: item.quantity,
-            price: parseFloat(item.price.toString()),
-            subtotal: parseFloat(item.price.toString()) * item.quantity // Required field in schema
-          }))
-        }
-      },
-      include: {
-        items: {
-          include: {
-            product: true
-          }
-        },
-        user: {
-          select: {
-            name: true,
-            email: true
-          }
-        },
-        member: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            email: true,
-            points: true
-          }
-        },
-        voucherUsages: {
-          include: {
-            voucher: {
-              select: {
-                code: true,
-                name: true
-              }
-            }
-          }
-        }
-      }
-    })
-    
     // If there's a voucher code, record its usage
     if (voucherCode) {
       try {
-        const voucher = await prisma.voucher.findUnique({
+        const voucher = await db.Voucher.findOne({
           where: { code: voucherCode }
         })
-        
-        if (voucher) {
-          await prisma.voucherUsage.create({
-            data: {
-              voucherId: voucher.id,
-              transactionId: transaction.id,
-              discountAmount: voucherDiscount || 0
-            }
+
+        if (voucher && (voucher as any).id) {
+          await (db as any).VoucherUsage.create({
+            voucherId: (voucher as any).id,
+            transactionId: transaction.id,
+            discountAmount: voucherDiscount || 0
           })
         }
       } catch (error) {
@@ -275,14 +244,13 @@ export async function POST(request: NextRequest) {
           }
         }
         
-        await prisma.member.update({
-          where: { id: memberId },
-          data: memberUpdateData
+        await db.Member.update(memberUpdateData, {
+          where: { id: memberId }
         })
         
         // Create point history record for points earned
         if (pointsEarned > 0) {
-          await prisma.pointHistory.create({
+          await db.PointHistory.create({
             data: {
               memberId: memberId,
               points: pointsEarned,
@@ -295,7 +263,7 @@ export async function POST(request: NextRequest) {
         
         // Create point history record for points used
         if (pointsUsed > 0) {
-          await prisma.pointHistory.create({
+          await db.PointHistory.create({
             data: {
               memberId: memberId,
               points: -pointsUsed,
@@ -307,7 +275,7 @@ export async function POST(request: NextRequest) {
         }
         
         // Update transaction with points earned
-        await prisma.transaction.update({
+        await db.Transaction.update({
           where: { id: transaction.id },
           data: {
             pointsEarned: pointsEarned
@@ -323,17 +291,20 @@ export async function POST(request: NextRequest) {
     
     // Update product stock for completed transactions
     // Don't reduce stock for Midtrans payments as they will be handled by webhook
-    if (paymentMethod !== 'VIRTUAL_ACCOUNT' && paymentMethod !== 'BANK_TRANSFER' && paymentMethod !== 'MIDTRANS') {
+    if (
+      paymentMethod !== 'VIRTUAL_ACCOUNT' &&
+      paymentMethod !== 'BANK_TRANSFER' &&
+      paymentMethod !== 'MIDTRANS' &&
+      paymentMethod !== 'QRIS' &&
+      !(paymentMethod === 'CARD' && requiresConfirmation === true)
+    ) {
       try {
         // Update stock for each product in the transaction
         for (const item of items) {
-          await prisma.product.update({
-            where: { id: item.productId },
-            data: {
-              stock: {
-                decrement: item.quantity
-              }
-            }
+          await db.Product.update({
+            stock: db.sequelize.literal(`stock - ${item.quantity}`)
+          }, {
+            where: { id: item.productId }
           })
         }
         console.log(`Stock updated for transaction ${transaction.id}`)
@@ -349,27 +320,98 @@ export async function POST(request: NextRequest) {
     // Send WhatsApp receipt notification for completed transactions
     if (transaction.status === 'COMPLETED' && transaction.customerPhone) {
       try {
-        const whatsappResponse = await fetch(`${process.env.NEXTAUTH_URL}/api/whatsapp/send-receipt`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${request.headers.get('authorization')?.replace('Bearer ', '')}` || '',
-          },
-          body: JSON.stringify({
-            transactionId: transaction.id,
-            phoneNumber: transaction.customerPhone,
-            format: 'detailed'
-          })
-        });
+        // Fetch full transaction with relations for receipt formatting
+        const fullTransaction = await db.Transaction.findByPk(transaction.id, {
+          include: [
+            {
+              model: db.TransactionItem,
+              as: 'items',
+              include: [
+                {
+                  model: db.Product,
+                  as: 'product'
+                }
+              ]
+            },
+            { model: db.Member, as: 'member' },
+            { model: db.User, as: 'user' },
+            {
+              model: db.VoucherUsage,
+              as: 'voucherUsages',
+              include: [
+                {
+                  model: db.Voucher,
+                  as: 'voucher',
+                  attributes: ['code']
+                }
+              ]
+            }
+          ]
+        }) as TransactionWithRelations | null
 
-        if (whatsappResponse.ok) {
-          console.log(`WhatsApp receipt sent successfully for transaction ${transaction.id}`);
+        if (!fullTransaction) {
+          console.warn(`Transaction ${transaction.id} not found for WhatsApp receipt formatting`)
         } else {
-          const errorData = await whatsappResponse.json();
-          console.warn(`Failed to send WhatsApp receipt for transaction ${transaction.id}:`, errorData);
+          // Prepare receipt data
+          const receiptData = {
+            id: fullTransaction.id,
+            createdAt: fullTransaction.createdAt,
+            items: fullTransaction.items.map((item: any) => ({
+              id: item.id,
+              name: item.product?.name || 'Unknown Product',
+              quantity: item.quantity,
+              price: item.price,
+              total: item.subtotal,
+              productCode: item.product?.productCode || undefined,
+              size: item.product?.size || undefined,
+              color: item.product?.color || undefined
+            })),
+            subtotal: (fullTransaction as any).total,
+            tax: fullTransaction.tax,
+            finalTotal: fullTransaction.finalTotal,
+            paymentMethod: fullTransaction.paymentMethod,
+            status: fullTransaction.status,
+            cashier: undefined,
+            customer: fullTransaction.customerName || undefined,
+            customerPhone: fullTransaction.customerPhone || undefined,
+            customerEmail: fullTransaction.customerEmail || undefined,
+            pointsUsed: fullTransaction.pointsUsed,
+            pointsEarned: fullTransaction.pointsEarned,
+            voucherCode: (fullTransaction as any).voucherUsages?.[0]?.voucher?.code || undefined,
+            voucherDiscount: fullTransaction.voucherDiscount,
+            promotionDiscount: fullTransaction.promoDiscount,
+            member: fullTransaction.member ? {
+              name: fullTransaction.member.name,
+              phone: fullTransaction.member.phone || '',
+              email: fullTransaction.member.email || undefined
+            } : undefined,
+            user: fullTransaction.user ? { name: fullTransaction.user.name } : undefined
+          }
+
+          // Format phone and message
+          const phoneValidation = ReceiptFormatter.validatePhoneNumber(fullTransaction.customerPhone || '')
+          const receiptMessage = ReceiptFormatter.formatReceiptForWhatsApp(receiptData)
+
+          if (!phoneValidation.isValid) {
+            console.warn(`Invalid phone number for WhatsApp receipt: ${fullTransaction.customerPhone}`)
+          } else {
+            const whatsappService = WhatsAppManager.getInstance()
+            // Ensure service is connected
+            if (!whatsappService.isConnected()) {
+              await whatsappService.initialize()
+              await new Promise(res => setTimeout(res, 2000))
+            }
+
+            const result = await whatsappService.sendMessage(phoneValidation.formatted || fullTransaction.customerPhone!, receiptMessage)
+            if (result.success) {
+              console.log(`WhatsApp receipt sent successfully for transaction ${transaction.id}`)
+            } else {
+              console.warn(`Failed to send WhatsApp receipt for transaction ${transaction.id}: ${result.error}`)
+            }
+          }
         }
       } catch (whatsappError) {
-        console.warn(`WhatsApp notification failed for transaction ${transaction.id}:`, whatsappError);
+        console.warn(`WhatsApp notification failed for transaction ${transaction.id}:`, whatsappError)
         // Don't fail the transaction if WhatsApp fails
       }
     }
@@ -389,11 +431,11 @@ export async function POST(request: NextRequest) {
       statusCode = 401;
     } else if (errorMessage.includes('required') || errorMessage.includes('validation')) {
       statusCode = 400;
-    } else if (error.code === 'P2002') {
-      // Prisma unique constraint violation
+    } else if (errorMessage.includes('Unique constraint') || errorMessage.includes('UNIQUE constraint')) {
+      // Sequelize unique constraint violation
       statusCode = 409;
-    } else if (error.code === 'P2003') {
-      // Prisma foreign key constraint violation
+    } else if (errorMessage.includes('Foreign key constraint') || errorMessage.includes('FOREIGN KEY constraint')) {
+      // Sequelize foreign key constraint violation
       statusCode = 400;
     }
     
@@ -411,8 +453,6 @@ export async function POST(request: NextRequest) {
       },
       { status: statusCode }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }
 
@@ -447,10 +487,7 @@ export async function PATCH(request: NextRequest) {
     
     // Verify that the user exists in the database
     try {
-      const userExists = await prisma.user.findUnique({
-        where: { id: session.user.id },
-        select: { id: true }
-      })
+      const userExists = await db.User.findByPk(session.user.id)
       
       if (!userExists) {
         console.error(`User not found in database in PATCH request. Session user ID: ${session.user.id}`)
@@ -493,9 +530,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Verify transaction exists
-    const existingTransaction = await prisma.transaction.findUnique({
-      where: { id }
-    })
+    const existingTransaction = await db.Transaction.findByPk(transactionId)
 
     if (!existingTransaction) {
       console.error(`Transaction with ID ${id} not found`)
@@ -508,24 +543,13 @@ export async function PATCH(request: NextRequest) {
     console.log('Found existing transaction:', existingTransaction)
 
     // Update transaction
-    const updatedTransaction = await prisma.transaction.update({
-      where: { id },
-      data: {
-        ...(paymentStatus && { paymentStatus }),
-        ...(status && { status }),
-        ...(paymentStatus === 'PAID' && { paidAt: new Date() }),
-        ...(amount !== undefined && { amount: parseFloat(amount.toString()) }),
-        ...(paymentMethod && { paymentMethod }),
-        ...(transactionId && { transactionId })
-      },
-      include: {
-        items: {
-          include: {
-            product: true
-          }
-        },
-        member: true
-      }
+    const updatedTransaction = await db.Transaction.update({
+      ...(status && { status }),
+      ...(paymentStatus && { paymentStatus }),
+      ...(status === 'COMPLETED' && { paidAt: new Date() })
+    }, {
+      where: { id: transactionId },
+      returning: true
     })
 
     // If transaction status changed to COMPLETED and there's a member, update member data
@@ -553,39 +577,34 @@ export async function PATCH(request: NextRequest) {
           }
         }
         
-        await prisma.member.update({
-          where: { id: updatedTransaction.memberId },
-          data: memberUpdateData
+        await db.Member.update(memberUpdateData, {
+          where: { id: updatedTransaction.memberId }
         })
         
         // Create point history record for points earned
         if (pointsEarned > 0) {
-          await prisma.pointHistory.create({
-            data: {
-              memberId: updatedTransaction.memberId,
-              points: pointsEarned,
-              type: 'EARNED',
-              description: `Poin dari transaksi #${updatedTransaction.id}`,
-              transactionId: updatedTransaction.id
-            }
+          await db.PointHistory.create({
+            memberId: updatedTransaction.memberId,
+            points: pointsEarned,
+            type: 'EARNED',
+            description: `Poin dari transaksi #${updatedTransaction.id}`,
+            transactionId: updatedTransaction.id
           })
         }
         
         // Create point history record for points used
         if (updatedTransaction.pointsUsed > 0) {
-          await prisma.pointHistory.create({
-            data: {
-              memberId: updatedTransaction.memberId,
-              points: -updatedTransaction.pointsUsed,
-              type: 'USED',
-              description: `Poin digunakan untuk transaksi #${updatedTransaction.id}`,
-              transactionId: updatedTransaction.id
-            }
+          await db.PointHistory.create({
+            memberId: updatedTransaction.memberId,
+            points: -updatedTransaction.pointsUsed,
+            type: 'USED',
+            description: `Poin digunakan untuk transaksi #${updatedTransaction.id}`,
+            transactionId: updatedTransaction.id
           })
         }
         
         // Update transaction with points earned
-        await prisma.transaction.update({
+        await db.Transaction.update({
           where: { id: updatedTransaction.id },
           data: {
             pointsEarned: pointsEarned
@@ -618,7 +637,5 @@ export async function PATCH(request: NextRequest) {
       },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }
