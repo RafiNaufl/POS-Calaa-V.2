@@ -214,6 +214,17 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
   const [showPromotionList, setShowPromotionList] = useState(false)
   const [showCashPaymentModal, setShowCashPaymentModal] = useState(false)
 
+  // Shift state
+  const [currentShift, setCurrentShift] = useState<any>(null)
+  const [isLoadingShift, setIsLoadingShift] = useState(true)
+  const [showOpenShiftModal, setShowOpenShiftModal] = useState(false)
+  const [openingBalance, setOpeningBalance] = useState<string>('')
+  const [showCloseShiftModal, setShowCloseShiftModal] = useState(false)
+  const [closingBalance, setClosingBalance] = useState<string>('')
+  const [closureReport, setClosureReport] = useState<any>(null)
+  const [showClosureSummaryModal, setShowClosureSummaryModal] = useState(false)
+  const [isSendingClosureWhatsApp, setIsSendingClosureWhatsApp] = useState(false)
+
 
   // Fetch data using SWR
   const fetcher = (url: string) => fetch(url).then(res => {
@@ -228,6 +239,99 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
   const { data: categoriesData, error: categoriesError } = useSWR('/api/categories', fetcher)
   
   const { data: vouchersData, error: vouchersError } = useSWR('/api/vouchers?active=true', fetcher)
+  
+  // Load current shift
+  useEffect(() => {
+    const loadShift = async () => {
+      if (!session?.user?.id) return
+      try {
+        setIsLoadingShift(true)
+        const res = await fetch('/api/cashier-shifts/current')
+        const json = await res.json()
+        setCurrentShift(json.shift || null)
+      } catch (e) {
+        setCurrentShift(null)
+      } finally {
+        setIsLoadingShift(false)
+      }
+    }
+    loadShift()
+  }, [session?.user?.id])
+
+  const handleOpenShift = async () => {
+    const opening = Number((openingBalance || '').replace(/^0+(?=\d)/, ''))
+    if (Number.isNaN(opening) || opening < 0) {
+      toast.error('Saldo pembukaan tidak valid')
+      return
+    }
+    if (!confirm('Konfirmasi membuka shift kasir?')) return
+    try {
+      const res = await fetch('/api/cashier-shifts/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ openingBalance: opening })
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Gagal membuka shift')
+      setCurrentShift(json.shift)
+      setShowOpenShiftModal(false)
+      toast.success('Shift kasir dibuka')
+    } catch (e: any) {
+      toast.error(e.message || 'Gagal membuka shift')
+    }
+  }
+
+  const handleCloseShift = async () => {
+    const closing = Number((closingBalance || '').replace(/^0+(?=\d)/, ''))
+    if (Number.isNaN(closing) || closing < 0) {
+      toast.error('Saldo penutupan tidak valid')
+      return
+    }
+    if (!confirm('Konfirmasi menutup shift kasir?')) return
+    try {
+      const res = await fetch('/api/cashier-shifts/close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ closingBalance: closing })
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Gagal menutup shift')
+      setClosureReport(json.report)
+      setShowCloseShiftModal(false)
+      setShowClosureSummaryModal(true)
+      setCurrentShift(null)
+      toast.success('Shift kasir ditutup')
+    } catch (e: any) {
+      toast.error(e.message || 'Gagal menutup shift')
+    }
+  }
+
+  const handleSendClosureSummaryWhatsApp = async () => {
+    if (!closureReport) {
+      toast.error('Ringkasan penutupan tidak tersedia')
+      return
+    }
+    setIsSendingClosureWhatsApp(true)
+    try {
+      const res = await fetch('/api/whatsapp/send-closure-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phoneNumber: '082219738457',
+          report: closureReport,
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error || 'Gagal mengirim ringkasan via WhatsApp')
+      }
+      toast.success('Ringkasan penutupan dikirim ke WhatsApp')
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal mengirim WhatsApp')
+    } finally {
+      setIsSendingClosureWhatsApp(false)
+    }
+  }
   
   const { data: promotionsData, error: promotionsError } = useSWR('/api/promotions?active=true', fetcher)
 
@@ -363,6 +467,10 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
 
   // Cart functions
   const addToCart = (product: Product) => {
+    if (!currentShift) {
+      toast.error('Kasir dalam status tutup. Buka shift terlebih dahulu.')
+      return
+    }
     const existingItem = cart.find(item => item.id === product.id)
     
     if (existingItem) {
@@ -678,6 +786,10 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
   };
 
   const processPayment = async () => {
+    if (!currentShift) {
+      toast.error('Shift kasir belum dibuka. Silakan buka shift.')
+      return
+    }
     if (cart.length === 0) {
       toast.error('Keranjang kosong')
       return
@@ -961,6 +1073,33 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
               <div>
                 <h1 className="text-2xl font-bold text-gray-900 mb-1">Kasir {session.user.name}</h1>
                 <p className="text-gray-600">Kelola transaksi penjualan</p>
+                <div className="mt-3 flex items-center gap-3">
+                  {isLoadingShift ? (
+                    <span className="inline-flex items-center px-3 py-1 rounded-full bg-gray-100 text-gray-600 text-sm">Memeriksa status shift...</span>
+                  ) : currentShift ? (
+                    <>
+                      <span className="inline-flex items-center px-3 py-1 rounded-full bg-green-100 text-green-700 text-sm">
+                        Shift Aktif • Dibuka {new Date(currentShift.startedAt).toLocaleTimeString('id-ID')} • Saldo Awal {formatCurrency(currentShift.openingBalance || 0)}
+                      </span>
+                      <button
+                        onClick={() => setShowCloseShiftModal(true)}
+                        className="inline-flex items-center px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium"
+                      >
+                        Tutup Shift
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="inline-flex items-center px-3 py-1 rounded-full bg-yellow-100 text-yellow-700 text-sm">Shift Ditutup</span>
+                      <button
+                        onClick={() => setShowOpenShiftModal(true)}
+                        className="inline-flex items-center px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium"
+                      >
+                        Buka Shift
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-8">
                 <div className="text-center">
@@ -975,6 +1114,217 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
             </div>
           </div>
         </div>
+
+        {/* Modal: Open Shift */}
+        {showOpenShiftModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+            <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Buka Shift Kasir</h3>
+                <button onClick={() => setShowOpenShiftModal(false)} className="text-gray-500 hover:text-gray-700">
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-gray-700">Saldo Awal</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={openingBalance}
+                  onChange={(e) => {
+                    const raw = e.target.value
+                    const sanitized = raw.replace(/^0+(?=\d)/, '')
+                    setOpeningBalance(sanitized)
+                  }}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-1 focus:ring-blue-400 focus:border-blue-400 bg-gray-50"
+                  placeholder="Masukkan saldo awal"
+                />
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <button onClick={() => setShowOpenShiftModal(false)} className="px-4 py-2.5 rounded-lg border border-gray-200 text-gray-700">Batal</button>
+                <button onClick={handleOpenShift} className="px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium">Buka Shift</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Close Shift */}
+        {showCloseShiftModal && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black bg-opacity-40" role="dialog" aria-modal="true">
+            <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Tutup Shift Kasir</h3>
+                <button onClick={() => setShowCloseShiftModal(false)} className="text-gray-500 hover:text-gray-700">
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-gray-700">Saldo Akhir (Kas Fisik)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={closingBalance}
+                  onChange={(e) => {
+                    const raw = e.target.value
+                    const sanitized = raw.replace(/^0+(?=\d)/, '')
+                    setClosingBalance(sanitized)
+                  }}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-1 focus:ring-blue-400 focus:border-blue-400 bg-gray-50"
+                  placeholder="Masukkan saldo akhir"
+                />
+                {closureReport && (
+                  <div className="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    <p className="text-sm text-gray-700 font-medium">Ringkasan Penutupan</p>
+                    <div className="mt-2 text-sm text-gray-600 space-y-1">
+                      <p>Total Transaksi: {formatCurrency(closureReport.totalTransactions || 0)}</p>
+                      <p>Kas Sistem (CASH): {formatCurrency((closureReport.systemExpectedCash || 0))}</p>
+                      <p>Kas Fisik: {formatCurrency(closureReport.physicalCash || 0)}</p>
+                      <p>Selisih: {formatCurrency(closureReport.difference || 0)}</p>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-3">
+                      <div className="bg-white rounded-md border border-gray-200 p-3">
+                        <p className="text-xs font-semibold text-gray-700">Pembayaran</p>
+                        <div className="mt-2 text-xs text-gray-600 space-y-1">
+                          <p>CASH: {formatCurrency(closureReport.paymentBreakdown?.CASH?.total || 0)} ({closureReport.paymentBreakdown?.CASH?.count || 0} trx)</p>
+                          <p>CARD: {formatCurrency(closureReport.paymentBreakdown?.CARD?.total || 0)} ({closureReport.paymentBreakdown?.CARD?.count || 0} trx)</p>
+                          <p>QRIS: {formatCurrency(closureReport.paymentBreakdown?.QRIS?.total || 0)} ({closureReport.paymentBreakdown?.QRIS?.count || 0} trx)</p>
+                          <p>Transfer: {formatCurrency(closureReport.paymentBreakdown?.BANK_TRANSFER?.total || 0)} ({closureReport.paymentBreakdown?.BANK_TRANSFER?.count || 0} trx)</p>
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-md border border-gray-200 p-3">
+                        <p className="text-xs font-semibold text-gray-700">Status Transaksi</p>
+                        <div className="mt-2 text-xs text-gray-600 space-y-1">
+                          <p>Selesai: {closureReport.statusCounts?.COMPLETED || 0}</p>
+                          <p>Menunggu: {closureReport.statusCounts?.PENDING || 0}</p>
+                          <p>Dibatalkan: {closureReport.statusCounts?.CANCELLED || 0}</p>
+                          <p>Dikembalikan: {closureReport.statusCounts?.REFUNDED || 0}</p>
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-md border border-gray-200 p-3">
+                        <p className="text-xs font-semibold text-gray-700">Diskon & Pajak</p>
+                        <div className="mt-2 text-xs text-gray-600 space-y-1">
+                          <p>Diskon Manual: {formatCurrency(closureReport.discountTotals?.discount || 0)}</p>
+                          <p>Diskon Voucher: {formatCurrency(closureReport.discountTotals?.voucherDiscount || 0)}</p>
+                          <p>Diskon Promo: {formatCurrency(closureReport.discountTotals?.promoDiscount || 0)}</p>
+                          <p>Pajak: {formatCurrency(closureReport.discountTotals?.tax || 0)}</p>
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-md border border-gray-200 p-3">
+                        <p className="text-xs font-semibold text-gray-700">Poin & Item</p>
+                        <div className="mt-2 text-xs text-gray-600 space-y-1">
+                          <p>Poin Diperoleh: {closureReport.pointsTotals?.earned || 0}</p>
+                          <p>Poin Digunakan: {closureReport.pointsTotals?.used || 0}</p>
+                          <p>Item Terjual: {closureReport.itemsSold || 0}</p>
+                        </div>
+                      </div>
+                    </div>
+                    {Array.isArray(closureReport.logs) && closureReport.logs.length > 0 && (
+                      <div className="mt-3 bg-white rounded-md border border-gray-200 p-3">
+                        <p className="text-xs font-semibold text-gray-700">Log Shift</p>
+                        <div className="mt-2 text-xs text-gray-600 space-y-1 max-h-40 overflow-y-auto">
+                          {closureReport.logs.map((l: any) => (
+                            <div key={l.id} className="flex items-start justify-between">
+                              <span>{l.action}</span>
+                              <span className="text-gray-500">{new Date(l.createdAt).toLocaleString('id-ID')}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <button onClick={() => setShowCloseShiftModal(false)} className="px-4 py-2.5 rounded-lg border border-gray-200 text-gray-700">Batal</button>
+                <button onClick={handleCloseShift} className="px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium">Tutup Shift</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Closure Summary */}
+        {showClosureSummaryModal && closureReport && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black bg-opacity-40" role="dialog" aria-modal="true">
+            <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Ringkasan Penutupan Shift</h3>
+                <button onClick={() => setShowClosureSummaryModal(false)} className="text-gray-500 hover:text-gray-700">
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="space-y-3">
+                <div className="mt-2 text-sm text-gray-600 space-y-1">
+                  <p>Total Transaksi: {formatCurrency(closureReport.totalTransactions || 0)}</p>
+                  <p>Kas Sistem (CASH): {formatCurrency((closureReport.systemExpectedCash || 0))}</p>
+                  <p>Kas Fisik: {formatCurrency(closureReport.physicalCash || 0)}</p>
+                  <p>Selisih: {formatCurrency(closureReport.difference || 0)}</p>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div className="bg-white rounded-md border border-gray-200 p-3">
+                    <p className="text-xs font-semibold text-gray-700">Pembayaran</p>
+                    <div className="mt-2 text-xs text-gray-600 space-y-1">
+                      <p>CASH: {formatCurrency(closureReport.paymentBreakdown?.CASH?.total || 0)} ({closureReport.paymentBreakdown?.CASH?.count || 0} trx)</p>
+                      <p>CARD: {formatCurrency(closureReport.paymentBreakdown?.CARD?.total || 0)} ({closureReport.paymentBreakdown?.CARD?.count || 0} trx)</p>
+                      <p>QRIS: {formatCurrency(closureReport.paymentBreakdown?.QRIS?.total || 0)} ({closureReport.paymentBreakdown?.QRIS?.count || 0} trx)</p>
+                      <p>Transfer: {formatCurrency(closureReport.paymentBreakdown?.BANK_TRANSFER?.total || 0)} ({closureReport.paymentBreakdown?.BANK_TRANSFER?.count || 0} trx)</p>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-md border border-gray-200 p-3">
+                    <p className="text-xs font-semibold text-gray-700">Status Transaksi</p>
+                    <div className="mt-2 text-xs text-gray-600 space-y-1">
+                      <p>Selesai: {closureReport.statusCounts?.COMPLETED || 0}</p>
+                      <p>Menunggu: {closureReport.statusCounts?.PENDING || 0}</p>
+                      <p>Dibatalkan: {closureReport.statusCounts?.CANCELLED || 0}</p>
+                      <p>Dikembalikan: {closureReport.statusCounts?.REFUNDED || 0}</p>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-md border border-gray-200 p-3">
+                    <p className="text-xs font-semibold text-gray-700">Diskon & Pajak</p>
+                    <div className="mt-2 text-xs text-gray-600 space-y-1">
+                      <p>Diskon Manual: {formatCurrency(closureReport.discountTotals?.discount || 0)}</p>
+                      <p>Diskon Voucher: {formatCurrency(closureReport.discountTotals?.voucherDiscount || 0)}</p>
+                      <p>Diskon Promo: {formatCurrency(closureReport.discountTotals?.promoDiscount || 0)}</p>
+                      <p>Pajak: {formatCurrency(closureReport.discountTotals?.tax || 0)}</p>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-md border border-gray-200 p-3">
+                    <p className="text-xs font-semibold text-gray-700">Poin & Item</p>
+                    <div className="mt-2 text-xs text-gray-600 space-y-1">
+                      <p>Poin Diperoleh: {closureReport.pointsTotals?.earned || 0}</p>
+                      <p>Poin Digunakan: {closureReport.pointsTotals?.used || 0}</p>
+                      <p>Item Terjual: {closureReport.itemsSold || 0}</p>
+                    </div>
+                  </div>
+                </div>
+                {Array.isArray(closureReport.logs) && closureReport.logs.length > 0 && (
+                  <div className="mt-3 bg-white rounded-md border border-gray-200 p-3">
+                    <p className="text-xs font-semibold text-gray-700">Log Shift</p>
+                    <div className="mt-2 text-xs text-gray-600 space-y-1 max-h-40 overflow-y-auto">
+                      {closureReport.logs.map((l: any) => (
+                        <div key={l.id} className="flex items-start justify-between">
+                          <span>{l.action}</span>
+                          <span className="text-gray-500">{new Date(l.createdAt).toLocaleString('id-ID')}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  onClick={handleSendClosureSummaryWhatsApp}
+                  disabled={isSendingClosureWhatsApp}
+                  className={`px-4 py-2.5 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium flex items-center gap-2 ${isSendingClosureWhatsApp ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  aria-label="Kirim ringkasan penutupan ke WhatsApp"
+                >
+                  <DevicePhoneMobileIcon className="h-5 w-5" />
+                  {isSendingClosureWhatsApp ? 'Mengirim...' : 'Kirim ke WhatsApp'}
+                </button>
+                <button onClick={() => setShowClosureSummaryModal(false)} className="px-4 py-2.5 rounded-lg border border-gray-200 text-gray-700">Tutup</button>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
           {/* Products Section */}
           <div className="xl:col-span-2 space-y-6">

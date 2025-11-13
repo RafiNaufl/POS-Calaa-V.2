@@ -15,6 +15,8 @@ const Promotion = require('./promotion')(sequelize, DataTypes);
 const ProductPromotion = require('./productPromotion')(sequelize, DataTypes);
 const CategoryPromotion = require('./categoryPromotion')(sequelize, DataTypes);
 const OperationalExpense = require('./operationalExpense')(sequelize, DataTypes);
+const CashierShift = require('./cashierShift')(sequelize, DataTypes);
+const CashierShiftLog = require('./cashierShiftLog')(sequelize, DataTypes);
 
 // Define associations - removed duplicate Category-Product association as it's handled in model associate methods
 
@@ -35,6 +37,8 @@ const db = {
   ProductPromotion,
   CategoryPromotion,
   OperationalExpense
+  , CashierShift
+  , CashierShiftLog
 };
 
 // Set up associations
