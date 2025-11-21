@@ -27,13 +27,27 @@ function buildApp () {
     .split(',')
     .map(o => o.trim().replace(/\/$/, ''))
   const allowedSet = new Set(allowedOrigins)
+  // Support simple wildcard patterns in CORS_ORIGIN like "https://*.vercel.app"
+  // Any origin entries containing '*' will be treated as patterns.
+  const wildcardEntries = allowedOrigins.filter((o) => o.includes('*'))
+  const matchWildcard = (origin) => {
+    for (const entry of wildcardEntries) {
+      // Build a safe regex from the entry
+      const pattern = '^' + entry
+        .replace(/[.*+?^${}()|[\]\\]/g, (m) => '\\' + m) // escape regex chars
+        .replace(/\\\*/g, '.*') + '$' // turn '*' into '.*'
+      const re = new RegExp(pattern)
+      if (re.test(origin)) return true
+    }
+    return false
+  }
   const corsOptions = {
     origin: function (origin, callback) {
       // Allow non-browser clients (no origin) and whitelisted origins (normalized)
       if (!origin) return callback(null, true)
       const normalized = String(origin).trim().replace(/\/$/, '')
       const isLocal = normalized.startsWith('http://localhost:') || normalized.startsWith('http://127.0.0.1:') || normalized.startsWith('http://0.0.0.0:')
-      if (isLocal || allowedSet.has(normalized)) return callback(null, true)
+      if (isLocal || allowedSet.has(normalized) || matchWildcard(normalized)) return callback(null, true)
       const err = new Error('Not allowed by CORS')
       err.status = 403
       err.code = 'CORS_NOT_ALLOWED'
