@@ -133,7 +133,8 @@ export class ReceiptFormatter {
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit'
+      second: '2-digit',
+      timeZone: 'Asia/Jakarta'
     }).format(date);
   }
 
@@ -221,8 +222,9 @@ export class ReceiptFormatter {
     }
 
     const voucherDiscount = this.toNumber(transaction.voucherDiscount);
-    if (transaction.voucherCode && voucherDiscount > 0) {
-      receipt += `🎟️ Diskon Voucher (${transaction.voucherCode}): -${this.formatCurrency(voucherDiscount)}\n`;
+    if (voucherDiscount > 0) {
+      const label = transaction.voucherCode ? `🎟️ Diskon Voucher (${transaction.voucherCode})` : '🎟️ Diskon Voucher';
+      receipt += `${label}: -${this.formatCurrency(voucherDiscount)}\n`;
     }
 
     const promotionDiscount = this.toNumber(transaction.promotionDiscount);

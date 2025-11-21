@@ -34,17 +34,17 @@ Sistem ini menyediakan fitur lengkap untuk mengelola voucher, diskon, dan promos
   - Syarat minimum
   - Status aktif/non-aktif
 
-## API Endpoints
+## API Endpoints (Express v1)
 
 ### Voucher
-- `GET /api/vouchers` - Mendapatkan daftar voucher
-- `POST /api/vouchers` - Membuat voucher baru
-- `POST /api/vouchers/validate` - Validasi dan apply voucher
+- `GET /api/v1/vouchers` - Mendapatkan daftar voucher
+- `POST /api/v1/vouchers` - Membuat voucher baru
+- `POST /api/v1/vouchers/validate` - Validasi dan apply voucher
 
 ### Promosi
-- `GET /api/promotions` - Mendapatkan daftar promosi
-- `POST /api/promotions` - Membuat promosi baru
-- `POST /api/promotions/calculate` - Menghitung diskon promosi
+- `GET /api/v1/promotions` - Mendapatkan daftar promosi
+- `POST /api/v1/promotions` - Membuat promosi baru
+- `POST /api/v1/promotions/calculate` - Menghitung diskon promosi
 
 ## Halaman Admin
 

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '@/hooks/useAuth'
 import { useRouter, useParams } from 'next/navigation'
 import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { ArrowLeft, Pencil, Trash2, ExternalLink } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
+import { apiFetch } from '@/lib/api'
 
 type OperationalExpense = {
   id: string
@@ -45,7 +46,7 @@ type OperationalExpense = {
 }
 
 export default function OperationalExpenseDetailPage() {
-  const { data: session, status } = useSession()
+  const { user, loading: authLoading } = useAuth()
   const router = useRouter()
   const params = useParams()
   const { toast } = useToast()
@@ -58,14 +59,16 @@ export default function OperationalExpenseDetailPage() {
   
   // Redirect if not authenticated
   useEffect(() => {
-    if (status === 'unauthenticated') {
+    if (authLoading) return
+    if (!user) {
       router.push('/login')
     }
-  }, [status, router])
+  }, [authLoading, user, router])
   
   // Redirect if not admin
   useEffect(() => {
-    if (session && session.user.role !== 'ADMIN') {
+    if (authLoading) return
+    if (user && user.role !== 'ADMIN') {
       router.push('/dashboard')
       toast({
         title: 'Akses Ditolak',
@@ -73,19 +76,19 @@ export default function OperationalExpenseDetailPage() {
         variant: 'destructive'
       })
     }
-  }, [session, router, toast])
+  }, [authLoading, user, router, toast])
   
   // Fetch expense details
   useEffect(() => {
-    if (session && id) {
+    if (user && id) {
       fetchExpenseDetails()
     }
-  }, [session, id])
+  }, [user, id])
   
   const fetchExpenseDetails = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch(`/api/operational-expenses/${id}`)
+      const response = await apiFetch(`/api/v1/operational-expenses/${id}`)
       
       if (!response.ok) {
         if (response.status === 404) {
@@ -119,7 +122,7 @@ export default function OperationalExpenseDetailPage() {
     setIsSubmitting(true)
     
     try {
-      const response = await fetch(`/api/operational-expenses/${id}`, {
+      const response = await apiFetch(`/api/v1/operational-expenses/${id}`, {
         method: 'DELETE'
       })
       
@@ -166,7 +169,7 @@ export default function OperationalExpenseDetailPage() {
     return format(new Date(dateString), 'dd MMMM yyyy, HH:mm', { locale: idLocale })
   }
   
-  if (status === 'loading' || (session && session.user.role !== 'ADMIN')) {
+  if (authLoading || (user && user.role !== 'ADMIN')) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>

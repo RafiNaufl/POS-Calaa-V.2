@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from 'react'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '@/hooks/useAuth'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -11,6 +11,7 @@ import Navbar from '@/components/Navbar'
 import ProductImage from '@/components/ProductImage'
 // DOKU Payment Modal removed
 import useSWR from 'swr'
+import { apiFetch, apiSWRFetcher, apiJson } from '@/lib/api'
 import {
   ShoppingCartIcon,
   PlusIcon,
@@ -164,6 +165,8 @@ interface Promotion {
   type: string
   discount: number
   conditions?: any
+  startDate?: string
+  endDate?: string
 }
 
 interface AppliedPromotion {
@@ -173,7 +176,7 @@ interface AppliedPromotion {
 }
 
 export default function CashierPage() {
-  const { data: session } = useSession()
+  const { user, loading: authLoading } = useAuth()
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
@@ -227,26 +230,23 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
 
 
   // Fetch data using SWR
-  const fetcher = (url: string) => fetch(url).then(res => {
-    if (!res.ok) throw new Error('Failed to fetch data')
-    return res.json()
-  })
+  const fetcher = apiSWRFetcher
   
-  const { data: productsData, error: productsError, isLoading: productsLoading } = useSWR('/api/products', fetcher, {
+  const { data: productsData, error: productsError, isLoading: productsLoading } = useSWR('/api/v1/products?limit=1000&page=1', fetcher, {
     refreshInterval: 5000 // refresh every 5 seconds
   })
   
-  const { data: categoriesData, error: categoriesError } = useSWR('/api/categories', fetcher)
+  const { data: categoriesData, error: categoriesError } = useSWR('/api/v1/categories', fetcher)
   
-  const { data: vouchersData, error: vouchersError } = useSWR('/api/vouchers?active=true', fetcher)
+  const { data: vouchersData, error: vouchersError } = useSWR('/api/v1/vouchers?active=true', apiSWRFetcher)
   
   // Load current shift
   useEffect(() => {
     const loadShift = async () => {
-      if (!session?.user?.id) return
+      if (!user?.id) return
       try {
         setIsLoadingShift(true)
-        const res = await fetch('/api/cashier-shifts/current')
+    const res = await apiFetch('/api/v1/cashier-shifts/current')
         const json = await res.json()
         setCurrentShift(json.shift || null)
       } catch (e) {
@@ -256,7 +256,7 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
       }
     }
     loadShift()
-  }, [session?.user?.id])
+  }, [user?.id])
 
   const handleOpenShift = async () => {
     const opening = Number((openingBalance || '').replace(/^0+(?=\d)/, ''))
@@ -266,7 +266,7 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
     }
     if (!confirm('Konfirmasi membuka shift kasir?')) return
     try {
-      const res = await fetch('/api/cashier-shifts/open', {
+      const res = await apiFetch('/api/v1/cashier-shifts/open', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ openingBalance: opening })
@@ -289,7 +289,7 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
     }
     if (!confirm('Konfirmasi menutup shift kasir?')) return
     try {
-      const res = await fetch('/api/cashier-shifts/close', {
+      const res = await apiFetch('/api/v1/cashier-shifts/close', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ closingBalance: closing })
@@ -313,7 +313,7 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
     }
     setIsSendingClosureWhatsApp(true)
     try {
-      const res = await fetch('/api/whatsapp/send-closure-summary', {
+      const res = await apiFetch('/api/v1/whatsapp/send-closure-summary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -333,7 +333,7 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
     }
   }
   
-  const { data: promotionsData, error: promotionsError } = useSWR('/api/promotions?active=true', fetcher)
+  const { data: promotionsData, error: promotionsError } = useSWR('/api/v1/promotions?active=true', fetcher)
 
   // Handle payment callback from Midtrans redirect
   useEffect(() => {
@@ -390,8 +390,12 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
 
   // Process categories data from SWR
   useEffect(() => {
-    if (categoriesData && Array.isArray(categoriesData)) {
-      setCategories(categoriesData)
+    // v1 categories returns { count, categories }
+    if (categoriesData && Array.isArray((categoriesData as any).categories)) {
+      setCategories((categoriesData as any).categories)
+    } else if (categoriesData && Array.isArray(categoriesData as any)) {
+      // Fallback for legacy array responses
+      setCategories(categoriesData as any)
     } else if (categoriesData) {
       console.error('Categories data is not an array:', categoriesData)
       toast.error('Format data kategori tidak valid')
@@ -400,32 +404,55 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
 
   // Process vouchers data from SWR
   useEffect(() => {
-    if (vouchersData && Array.isArray(vouchersData)) {
-      const activeVouchers = vouchersData.filter((voucher: Voucher) => {
+    // v1 vouchers returns { count, vouchers }
+    const list = vouchersData && Array.isArray((vouchersData as any).vouchers)
+      ? (vouchersData as any).vouchers
+      : (Array.isArray(vouchersData as any) ? (vouchersData as any) : null)
+
+    if (list) {
+      const normalized = list.map((v: any) => ({
+        ...v,
+        type: String(v.type || '').toLowerCase()
+      }))
+      const activeVouchers = normalized.filter((voucher: Voucher) => {
         const now = new Date()
         const startDate = new Date(voucher.startDate)
         const endDate = new Date(voucher.endDate)
         return voucher.isActive && now >= startDate && now <= endDate
       })
       setAvailableVouchers(activeVouchers)
-    } else if (vouchersData && !Array.isArray(vouchersData)) {
-      console.error('Vouchers data is not an array:', vouchersData)
+    } else if (vouchersData) {
+      console.error('Vouchers data is not an array/object list:', vouchersData)
     }
   }, [vouchersData])
 
   // Process promotions data from SWR
   useEffect(() => {
-    if (promotionsData && Array.isArray(promotionsData)) {
-      const activePromotions = promotionsData.filter((promotion: any) => {
-        const now = new Date()
-        const startDate = new Date(promotion.startDate)
-        const endDate = new Date(promotion.endDate)
-        return promotion.isActive && now >= startDate && now <= endDate
-      })
-      setAvailablePromotions(activePromotions)
-    } else if (promotionsData && !Array.isArray(promotionsData)) {
-      console.error('Promotions data is not an array:', promotionsData)
+    if (!promotionsData) return
+    // Support both array and object-wrapped responses: { count, promotions }
+    const list = Array.isArray(promotionsData)
+      ? promotionsData
+      : Array.isArray(promotionsData.promotions)
+        ? promotionsData.promotions
+        : []
+
+    if (list.length === 0) {
+      if (!Array.isArray(promotionsData)) {
+        console.warn('Promotions response does not contain list array:', promotionsData)
+      }
+      setAvailablePromotions([])
+      return
     }
+
+    const now = new Date()
+    const activePromotions = list.filter((promotion: any) => {
+      const startDate = promotion.startDate ? new Date(promotion.startDate) : null
+      const endDate = promotion.endDate ? new Date(promotion.endDate) : null
+      const isDateValid = startDate && endDate && !isNaN(startDate.getTime()) && !isNaN(endDate.getTime())
+      const isWithinPeriod = isDateValid ? (now >= startDate! && now <= endDate!) : true
+      return Boolean(promotion.isActive) && isWithinPeriod
+    })
+    setAvailablePromotions(activePromotions)
   }, [promotionsData])
   
   // Handle errors
@@ -543,20 +570,34 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
 
     setIsSearchingMember(true)
     try {
-      const params = new URLSearchParams()
-      if (customerPhone) params.append('phone', customerPhone)
-      if (customerEmail) params.append('email', customerEmail)
-
-      const response = await fetch(`/api/members/search?${params}`)
-      
+      const q = customerPhone ? String(customerPhone).replace(/\D/g, '') : String(customerEmail || '').trim()
+      const response = await apiFetch(`/api/v1/members/search?q=${encodeURIComponent(q)}`)
+      const payload = await response.json().catch(() => ({}))
       if (response.ok) {
-        const memberData = await response.json()
-        setMember(memberData)
-        setCustomerName(memberData.name)
-        toast.success(`Member ditemukan: ${memberData.name} (${memberData.points} poin)`)
+        const results: Member[] = Array.isArray(payload) ? payload : (payload.members || [])
+
+        // Prefer exact match if possible, else fallback to first result
+        let found: Member | null = null
+        if (customerPhone) {
+          const normalizedPhone = String(customerPhone).replace(/\D/g, '')
+          found = results.find(m => String(m.phone || '').replace(/\D/g, '') === normalizedPhone) || results[0] || null
+        } else if (customerEmail) {
+          const targetEmail = String(customerEmail).toLowerCase()
+          found = results.find(m => String(m.email || '').toLowerCase() === targetEmail) || results[0] || null
+        } else {
+          found = results[0] || null
+        }
+
+        if (found) {
+          setMember(found)
+          setCustomerName(found.name)
+          toast.success(`Member ditemukan: ${found.name} (${found.points} poin)`) 
+        } else {
+          setMember(null)
+          toast.error('Member tidak ditemukan')
+        }
       } else {
-        setMember(null)
-        toast.error('Member tidak ditemukan')
+        toast.error((payload && (payload.error || payload.message)) || 'Gagal mencari member')
       }
     } catch (error) {
       console.error('Error searching member:', error)
@@ -573,11 +614,9 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
     }
 
     try {
-      const response = await fetch('/api/members', {
+      const response = await apiFetch('/api/v1/members', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: customerName,
           phone: customerPhone || null,
@@ -585,13 +624,12 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
         })
       })
 
+      const payload = await response.json().catch(() => ({}))
       if (response.ok) {
-        const newMember = await response.json()
-        setMember(newMember)
-        toast.success(`Member baru berhasil dibuat: ${newMember.name}`)
+        setMember(payload)
+        toast.success(`Member baru berhasil dibuat: ${payload.name}`)
       } else {
-        const error = await response.json()
-        toast.error(error.error || 'Gagal membuat member baru')
+        toast.error((payload && (payload.error || payload.message)) || 'Gagal membuat member baru')
       }
     } catch (error) {
       console.error('Error creating member:', error)
@@ -617,31 +655,28 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
         price: item.price,
         name: item.name
       }))
-      
-      const response = await fetch('/api/vouchers/validate', {
+      const res = await apiFetch('/api/v1/vouchers/validate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           code: voucherCode,
           subtotal,
           cartItems,
-          userId: session?.user?.id
+          userId: user?.id
         })
       })
 
-      if (response.ok) {
-        const data = await response.json()
-        setAppliedVoucher(data.voucher)
-        setVoucherDiscount(data.discountAmount)
-        toast.success(`Voucher berhasil diterapkan: ${data.voucher.name}`)
+      const payload = await res.json()
+      if (res.ok) {
+        const normalizedVoucher = { ...payload.voucher, type: String(payload.voucher?.type || '').toUpperCase() }
+        setAppliedVoucher(normalizedVoucher)
+        setVoucherDiscount(payload.discountAmount)
+        toast.success(`Voucher berhasil diterapkan: ${normalizedVoucher.name}`)
       } else {
-        const error = await response.json()
-        if (error.minPurchase) {
-          toast.error(`Minimum pembelian Rp ${new Intl.NumberFormat('id-ID').format(error.minPurchase)}`)
+        if (payload?.minPurchase) {
+          toast.error(`Minimum pembelian Rp ${new Intl.NumberFormat('id-ID').format(payload.minPurchase)}`)
         } else {
-          toast.error(error.error || 'Voucher tidak valid')
+          toast.error(payload?.error || 'Voucher tidak valid')
         }
       }
     } catch (error) {
@@ -678,23 +713,22 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
         image: item.image
       }))
 
-      const response = await fetch('/api/promotions/calculate', {
+      const response = await apiFetch('/api/v1/promotions/calculate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items: cartItems })
       })
 
+      const data = await response.json().catch(() => ({}))
       if (response.ok) {
-        const data = await response.json()
         setAppliedPromotions(data.appliedPromotions || [])
         setPromotionDiscount(data.totalDiscount || 0)
-        
-        // Log applied promotions for debugging
         if (data.appliedPromotions && data.appliedPromotions.length > 0) {
           console.log('Applied promotions:', data.appliedPromotions)
         }
+      } else {
+        console.error('Error calculating promotions:', data)
+        toast.error((data && (data.error || data.message)) || 'Gagal menghitung promosi')
       }
     } catch (error) {
       console.error('Error calculating promotions:', error)
@@ -741,7 +775,7 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
         <div style="border: 1px solid #000; padding: 10px; margin-bottom: 20px;">
           <h4 style="margin: 0 0 10px;">Detail Transaksi</h4>
           <p style="margin: 5px 0;">ID Transaksi: ${bankTransferTransaction.id}</p>
-          <p style="margin: 5px 0;">Tanggal: ${new Date(bankTransferTransaction.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+          <p style="margin: 5px 0;">Tanggal: ${new Date(bankTransferTransaction.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' })}</p>
           <p style="margin: 5px 0;">Total Pembayaran: ${formatCurrency(bankTransferTransaction.total)}</p>
         </div>
         
@@ -803,11 +837,8 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
       // Re-cek stok terbaru untuk setiap item agar tidak oversell
       const latestProducts = await Promise.all(
         cart.map(async (item) => {
-          const res = await fetch(`/api/products/${item.id}`)
-          if (!res.ok) {
-            throw new Error('Gagal mengambil data produk terbaru')
-          }
-          return res.json()
+          const latest = await apiJson<Product>(`/api/v1/products/${item.id}`)
+          return latest
         })
       )
 
@@ -825,32 +856,39 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
       }
 
       const totals = calculateTotal()
-      const transactionData = {
-        items: cart.map(item => ({
-          productId: item.id,
-          quantity: item.quantity,
-          price: item.price,
-          subtotal: item.price * item.quantity,
-          name: item.name
-        })),
+      // Bangun payload transaksi tanpa mengirim nilai null untuk field string opsional
+      const baseItems = cart.map(item => ({
+        productId: item.id,
+        quantity: item.quantity,
+        price: item.price,
+        subtotal: item.price * item.quantity,
+        name: item.name
+      }))
+      const transactionData: any = {
+        items: baseItems,
         subtotal: totals.subtotal,
         total: totals.total,
         paymentMethod,
-        customerName: customerName || null,
-        customerPhone: customerPhone || null,
-        customerEmail: customerEmail || null,
+        // Angka opsional
         pointsUsed: pointsToUse,
-        voucherCode: appliedVoucher?.code || null,
         voucherDiscount: totals.voucherDiscount,
         promoDiscount: totals.promotionDiscount,
-        promotionDiscount: totals.promotionDiscount, // Mengirim kedua field untuk kompatibilitas
-        memberId: member?.id || null,
-        // Add cash payment data
-        cashAmount: paymentMethod === 'CASH' ? cashAmount : null,
-        changeAmount: paymentMethod === 'CASH' ? changeAmount : null,
-        // Require manual confirmation for CARD to show modal and defer stock
-        requiresConfirmation: paymentMethod === 'CARD' ? true : false
+        // Data cash (hanya kirim saat CASH)
+        ...(paymentMethod === 'CASH' ? { cashAmount, changeAmount } : {}),
+        // Kartu butuh konfirmasi manual
+        ...(paymentMethod === 'CARD' ? { requiresConfirmation: true } : {})
       }
+      // Sertakan kode voucher bila diterapkan untuk pencatatan penggunaan
+      if (appliedVoucher?.code) {
+        transactionData.voucherCode = appliedVoucher.code
+      }
+      // String opsional: kirim hanya jika ada nilainya
+      if (customerName) transactionData.customerName = customerName
+      if (customerPhone) transactionData.customerPhone = customerPhone
+      if (customerEmail) transactionData.customerEmail = customerEmail
+      if (appliedVoucher?.code) transactionData.voucherCode = appliedVoucher.code
+      // Member opsional: kirim hanya jika ada
+      if (member?.id) transactionData.memberId = member.id
       
       // Handle Midtrans payment
       if (paymentMethod === 'MIDTRANS') {
@@ -858,16 +896,12 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
           const orderId = `TXN-${Date.now()}`;
           
           // First, create transaction in database with PENDING status
-          const transactionResponse = await fetch('/api/transactions', {
+          const transactionResponse = await apiFetch('/api/v1/transactions', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               ...transactionData,
-              id: orderId,
-              paymentStatus: 'PENDING',
-              status: 'PENDING'
+              paymentMethod: 'MIDTRANS'
             })
           });
 
@@ -878,13 +912,11 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
           const transactionResult = await transactionResponse.json();
           
           // Create Midtrans payment token
-          const midtransResponse = await fetch('/api/payments/midtrans/create-token', {
+          const midtransResponse = await apiFetch('/api/v1/payments/midtrans/create-token', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              orderId: orderId,
+              orderId: String(transactionResult.id),
               amount: totals.total,
               customerDetails: {
                 first_name: customerName || member?.name || 'Customer',
@@ -921,7 +953,7 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
       
       // Proses pembayaran normal untuk metode lain
       const pendingForConfirmation = (paymentMethod === 'BANK_TRANSFER' || paymentMethod === 'QRIS' || paymentMethod === 'CARD')
-      const response = await fetch('/api/transactions', {
+      const response = await apiFetch('/api/v1/transactions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -930,17 +962,22 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
       })
       
       if (!response.ok) {
-        const errorData = await response.json()
-        console.error('Transaction error:', errorData)
-        throw new Error(errorData.message || 'Failed to process transaction')
+        try {
+          const errorData = await response.json()
+          console.error('Transaction error:', errorData)
+          throw new Error(errorData.message || 'Failed to process transaction')
+        } catch (_) {
+          throw new Error('Failed to process transaction')
+        }
       }
-    
+
       const transaction = await response.json()
     
       // Set transaction data for modal
       const transactionWithItems = {
         id: transaction.id,
         items: cart,
+        subtotal: totals.subtotal,
         total: totals.total,
         paymentMethod,
         customerName: customerName || undefined,
@@ -966,6 +1003,20 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
       } else {
         setCompletedTransaction(transactionWithItems)
         setShowTransactionModal(true)
+        // Kirim struk WhatsApp untuk pembayaran langsung jika nomor pelanggan tersedia
+        if (customerPhone) {
+          try {
+            await apiFetch('/api/v1/whatsapp/send-receipt', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ transactionId: transactionWithItems.id, phoneNumber: customerPhone, receiptType: 'detailed' })
+            })
+            toast.success('Struk WhatsApp terkirim')
+          } catch (err) {
+            console.error('Gagal mengirim struk WhatsApp:', err)
+            toast.error('Gagal mengirim struk WhatsApp')
+          }
+        }
       }
       
       // Clear cart
@@ -1005,9 +1056,9 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
     
     const receiptContent = `
       ===== Wear Calaa =====
-      Tanggal: ${new Date().toLocaleDateString('id-ID')}
-      Waktu: ${new Date().toLocaleTimeString('id-ID')}
-      Kasir: ${session?.user?.name || 'Admin'}
+      Tanggal: ${new Date().toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta' })}
+      Waktu: ${new Date().toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' })}
+      Kasir: ${user?.name || 'Admin'}
       ${customerName ? `Pelanggan: ${customerName}` : ''}
       ${member ? `Member: ${member.name} (${member.phone})` : ''}
       
@@ -1053,7 +1104,7 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
 
   const { subtotal, total } = calculateTotal()
 
-  if (!session) {
+  if (authLoading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
@@ -1071,7 +1122,7 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
           <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900 mb-1">Kasir {session.user.name}</h1>
+                <h1 className="text-2xl font-bold text-gray-900 mb-1">Kasir {user?.name ?? 'Pengguna'}</h1>
                 <p className="text-gray-600">Kelola transaksi penjualan</p>
                 <div className="mt-3 flex items-center gap-3">
                   {isLoadingShift ? (
@@ -1079,7 +1130,7 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                   ) : currentShift ? (
                     <>
                       <span className="inline-flex items-center px-3 py-1 rounded-full bg-green-100 text-green-700 text-sm">
-                        Shift Aktif • Dibuka {new Date(currentShift.startedAt).toLocaleTimeString('id-ID')} • Saldo Awal {formatCurrency(currentShift.openingBalance || 0)}
+                        Shift Aktif • Dibuka {new Date(currentShift.startedAt).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' })} • Saldo Awal {formatCurrency(currentShift.openingBalance || 0)}
                       </span>
                       <button
                         onClick={() => setShowCloseShiftModal(true)}
@@ -1303,7 +1354,7 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                       {closureReport.logs.map((l: any) => (
                         <div key={l.id} className="flex items-start justify-between">
                           <span>{l.action}</span>
-                          <span className="text-gray-500">{new Date(l.createdAt).toLocaleString('id-ID')}</span>
+                          <span className="text-gray-500">{new Date(l.createdAt).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}</span>
                         </div>
                       ))}
                     </div>
@@ -1461,15 +1512,15 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                             </div>
                             <p className="text-sm text-green-700">
                               <span className="font-medium">Tipe:</span> {
-                                appliedVoucher.type === 'PERCENTAGE' ? 'Persentase' : 
-                                appliedVoucher.type === 'FIXED_AMOUNT' ? 'Nominal Tetap' : 
+                                appliedVoucher.type === 'percentage' ? 'Persentase' : 
+                                appliedVoucher.type === 'fixed' ? 'Nominal Tetap' : 
                                 'Gratis Ongkir'
                               }
                             </p>
                             <p className="text-sm text-green-700">
                               <span className="font-medium">Nilai:</span> {
-                                appliedVoucher.type === 'PERCENTAGE' ? `${appliedVoucher.value}%` : 
-                                appliedVoucher.type === 'FIXED_AMOUNT' ? formatCurrency(appliedVoucher.value) : 
+                                appliedVoucher.type === 'percentage' ? `${appliedVoucher.value}%` : 
+                                appliedVoucher.type === 'fixed' ? formatCurrency(appliedVoucher.value) : 
                                 'Gratis Ongkir'
                               }
                             </p>
@@ -1513,21 +1564,21 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                               </span>
                             </div>
                             <div className="flex items-center gap-2 mb-2">
-                              <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full ${voucher.type === 'PERCENTAGE' 
+                              <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full ${voucher.type === 'percentage' 
                                 ? 'bg-blue-100 text-blue-700' 
-                                : voucher.type === 'FIXED_AMOUNT' 
+                                : voucher.type === 'fixed' 
                                 ? 'bg-green-100 text-green-700' 
                                 : 'bg-purple-100 text-purple-700'}`}>
-                                {voucher.type === 'PERCENTAGE' ? '%' : voucher.type === 'FIXED_AMOUNT' ? '¥' : '🚚'}
+                                {voucher.type === 'percentage' ? '%' : voucher.type === 'fixed' ? '¥' : '🚚'}
                               </span>
-                              <p className="text-sm font-medium ${voucher.type === 'PERCENTAGE' 
+                              <p className="text-sm font-medium ${voucher.type === 'percentage' 
                                 ? 'text-blue-600' 
-                                : voucher.type === 'FIXED_AMOUNT' 
+                                : voucher.type === 'fixed' 
                                 ? 'text-green-600' 
                                 : 'text-purple-600'}">
-                                {voucher.type === 'PERCENTAGE' 
+                                {voucher.type === 'percentage' 
                                   ? `Diskon ${voucher.value}%${(voucher as any).maxDiscount ? ` (maks. ${formatCurrency((voucher as any).maxDiscount)})` : ''}` 
-                                  : voucher.type === 'FIXED_AMOUNT' 
+                                  : voucher.type === 'fixed' 
                                   ? `Diskon ${formatCurrency(voucher.value)}` 
                                   : 'Gratis Ongkir'}
                               </p>
@@ -1676,6 +1727,11 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                                   {promotion.type === 'BULK_DISCOUNT' && 'Diskon Grosir'}
                                   {promotion.type === 'BUY_X_GET_Y' && 'Beli X Dapat Y'}
                                 </p>
+                                <span className="text-xs text-gray-500">
+                                  Periode: {promotion.startDate ? new Date(promotion.startDate).toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta' }) : '-'}
+                                  {' '}–{' '}
+                                  {promotion.endDate ? new Date(promotion.endDate).toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta' }) : '-'}
+                                </span>
                               </div>
                               <div className={`rounded-lg p-2.5 ${isApplied ? 'bg-green-100' : 'bg-gray-50'}`}>
                                 <p className="text-xs text-gray-700 font-medium flex items-center gap-1.5">
@@ -2258,7 +2314,7 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                         Transaksi ID: {completedTransaction.id}
                       </h4>
                       <p className="text-sm text-green-700">
-                        {completedTransaction.createdAt.toLocaleString('id-ID')}
+                        {completedTransaction.createdAt.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}
                       </p>
                     </div>
                   </div>
@@ -2268,7 +2324,7 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm font-medium text-gray-500">Kasir</p>
-                    <p className="text-sm text-gray-900">{session?.user?.name}</p>
+                    <p className="text-sm text-gray-900">{user?.name}</p>
                   </div>
                   {completedTransaction.customerName && (
                     <div>
@@ -2358,7 +2414,7 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">Subtotal:</span>
                       <span className="text-sm text-gray-900">
-                        {formatCurrency(completedTransaction.total / 1.1)}
+                        {formatCurrency((completedTransaction as any).subtotal ?? calculateTotal().subtotal)}
                       </span>
                     </div>
 
@@ -2466,12 +2522,13 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                     <div className="font-medium text-gray-900">{bankTransferTransaction.id}</div>
                     <div className="text-gray-600">Tanggal:</div>
                     <div className="font-medium text-gray-900">
-                      {new Date(bankTransferTransaction.createdAt).toLocaleDateString('id-ID', {
+                      {new Date(bankTransferTransaction.createdAt).toLocaleString('id-ID', {
                         day: '2-digit',
                         month: 'long',
                         year: 'numeric',
                         hour: '2-digit',
-                        minute: '2-digit'
+                        minute: '2-digit',
+                        timeZone: 'Asia/Jakarta'
                       })}
                     </div>
                     <div className="text-gray-600">Total Pembayaran:</div>
@@ -2531,11 +2588,8 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                   onClick={async () => {
                     try {
                       // Panggil API konfirmasi BANK_TRANSFER yang sekaligus mengurangi stok
-                      const response = await fetch('/api/payments/bank-transfer/confirm', {
+                      const response = await apiFetch('/api/v1/payments/bank-transfer/confirm', {
                         method: 'POST',
-                        headers: {
-                          'Content-Type': 'application/json',
-                        },
                         body: JSON.stringify({ transactionId: bankTransferTransaction.id })
                       })
 
@@ -2545,6 +2599,20 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                         setCompletedTransaction({ ...bankTransferTransaction })
                         setShowTransactionModal(true)
                         setShowBankTransferModal(false)
+                        // Kirim struk WhatsApp jika nomor pelanggan tersedia
+                        if (customerPhone) {
+                          try {
+                            await apiFetch('/api/v1/whatsapp/send-receipt', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ transactionId: bankTransferTransaction.id, phoneNumber: customerPhone, receiptType: 'detailed' })
+                            })
+                            toast.success('Struk WhatsApp terkirim')
+                          } catch (err) {
+                            console.error('Gagal mengirim struk WhatsApp:', err)
+                            toast.error('Gagal mengirim struk WhatsApp')
+                          }
+                        }
                         // Clear cart dan reset form
                         clearCart()
                         setCustomerName('')
@@ -2605,7 +2673,7 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-500">Tanggal</p>
-                  <p className="text-sm text-gray-900">{new Date(qrisTransaction.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                  <p className="text-sm text-gray-900">{new Date(qrisTransaction.createdAt).toLocaleString('id-ID', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' })}</p>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-500">Total Pembayaran</p>
@@ -2632,9 +2700,8 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
               <button
                 onClick={async () => {
                   try {
-                    const response = await fetch('/api/payments/qris/confirm', {
+                    const response = await apiFetch('/api/v1/payments/qris/confirm', {
                       method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ transactionId: qrisTransaction.id })
                     })
                     if (response.ok) {
@@ -2643,6 +2710,20 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                       setCompletedTransaction({ ...qrisTransaction })
                       setShowTransactionModal(true)
                       setShowQrisModal(false)
+                      // Kirim struk WhatsApp jika nomor pelanggan tersedia
+                      if (customerPhone) {
+                        try {
+                          await apiFetch('/api/v1/whatsapp/send-receipt', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ transactionId: qrisTransaction.id, phoneNumber: customerPhone, receiptType: 'detailed' })
+                          })
+                          toast.success('Struk WhatsApp terkirim')
+                        } catch (err) {
+                          console.error('Gagal mengirim struk WhatsApp:', err)
+                          toast.error('Gagal mengirim struk WhatsApp')
+                        }
+                      }
                       clearCart()
                       setCustomerName('')
                       setCustomerPhone('')
@@ -2656,7 +2737,7 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                       setPromotionDiscount(0)
                       setQrisTransaction(null)
                     } else {
-                      const errorData = await response.json()
+                      const errorData = await response.json().catch(() => ({}))
                       toast.error(errorData.message || 'Gagal mengkonfirmasi pembayaran QRIS')
                     }
                   } catch (error) {
@@ -2720,9 +2801,8 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
               <button
                 onClick={async () => {
                   try {
-                    const response = await fetch('/api/payments/card/confirm', {
+                    const response = await apiFetch('/api/v1/payments/card/confirm', {
                       method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ transactionId: cardTransaction.id })
                     })
                     if (response.ok) {
@@ -2731,6 +2811,20 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                       setCompletedTransaction({ ...cardTransaction })
                       setShowTransactionModal(true)
                       setShowCardModal(false)
+                      // Kirim struk WhatsApp jika nomor pelanggan tersedia
+                      if (customerPhone) {
+                        try {
+                          await apiFetch('/api/v1/whatsapp/send-receipt', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ transactionId: cardTransaction.id, phoneNumber: customerPhone, receiptType: 'detailed' })
+                          })
+                          toast.success('Struk WhatsApp terkirim')
+                        } catch (err) {
+                          console.error('Gagal mengirim struk WhatsApp:', err)
+                          toast.error('Gagal mengirim struk WhatsApp')
+                        }
+                      }
                       clearCart()
                       setCustomerName('')
                       setCustomerPhone('')
@@ -2744,7 +2838,7 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                       setPromotionDiscount(0)
                       setCardTransaction(null)
                     } else {
-                      const errorData = await response.json()
+                      const errorData = await response.json().catch(() => ({}))
                       toast.error(errorData.message || 'Gagal mengkonfirmasi pembayaran Kartu')
                     }
                   } catch (error) {

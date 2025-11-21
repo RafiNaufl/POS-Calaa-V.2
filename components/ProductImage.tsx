@@ -3,6 +3,10 @@
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
 
+// Simple in-memory cache to avoid repeated fetches across remounts
+const imageCache = new Map<string, string | null>()
+const inFlight = new Set<string>()
+
 interface ProductImageProps {
   productId: string
   productName: string
@@ -26,26 +30,56 @@ export default function ProductImage({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(false)
 
-  // Fetch image from product details if not provided
+  // Fetch image from product details if not provided (run once per id/image change)
   useEffect(() => {
-    if (!image && productId && !loading) {
-      setLoading(true)
-      fetch(`/api/products/${productId}`)
-        .then(response => response.json())
-        .then(data => {
-          if (data.image) {
-            setCurrentImage(data.image)
-          }
-        })
-        .catch(err => {
-          console.error('Error fetching product image:', err)
-          setError(true)
-        })
-        .finally(() => {
-          setLoading(false)
-        })
+    if (image || !productId) return
+
+    // Use cache if available to prevent repeated fetches (e.g., Strict Mode double-invoke)
+    if (imageCache.has(productId)) {
+      const cached = imageCache.get(productId)
+      if (cached) {
+        setCurrentImage(cached)
+        setError(false)
+      } else {
+        setCurrentImage(undefined)
+        setError(true)
+      }
+      return
     }
-  }, [productId, image, loading])
+
+    // If a fetch for this productId is already in-flight, skip starting another
+    if (inFlight.has(productId)) return
+
+    let isMounted = true
+    setLoading(true)
+    inFlight.add(productId)
+    fetch(`/api/v1/products/${productId}`)
+      .then(response => {
+        if (!response.ok) throw new Error(`Failed to fetch product: ${response.status}`)
+        return response.json()
+      })
+      .then(data => {
+        if (!isMounted) return
+        if (data && data.image) {
+          setCurrentImage(data.image)
+          imageCache.set(productId, data.image)
+        } else {
+          imageCache.set(productId, null)
+        }
+      })
+      .catch(err => {
+        if (!isMounted) return
+        console.error('Error fetching product image:', err)
+        setError(true)
+        imageCache.set(productId, null)
+      })
+      .finally(() => {
+        if (!isMounted) return
+        inFlight.delete(productId)
+        setLoading(false)
+      })
+    return () => { isMounted = false }
+  }, [productId, image])
 
   const handleImageError = () => {
     setError(true)

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { apiFetch } from '@/lib/api'
 import { addDays, format, subDays, parseISO } from "date-fns"
 import { id } from "date-fns/locale"
 import { BanknotesIcon, ShoppingCartIcon, ChartBarIcon, UserGroupIcon, DocumentArrowDownIcon, ArrowLeftIcon, InformationCircleIcon, ArrowUturnLeftIcon } from "@heroicons/react/24/outline"
@@ -124,36 +125,210 @@ export default function ReportsPage() {
   })
   const expenseColorPalette = ['#4f46e5','#0891b2','#059669','#d97706','#7c3aed','#f43f5e','#0ea5e9','#22c55e','#f59e0b','#a855f7']
 
+  // Normalize incoming sales report data to ensure safe shapes and values
+  const normalizeSalesReportData = (data: any) => {
+    const safeSummary: ReportSummary = {
+      totalSales: Number(data?.summary?.totalSales ?? 0) || 0,
+      totalTransactions: Number(data?.summary?.totalTransactions ?? 0) || 0,
+      averageTransaction: Number(data?.summary?.averageTransaction ?? 0) || 0,
+      growth: Number(data?.summary?.growth ?? 0) || 0,
+      salesGrowth: data?.summary?.salesGrowth,
+      transactionGrowth: data?.summary?.transactionGrowth,
+      customerGrowth: data?.summary?.customerGrowth,
+      totalUniqueCustomers: Number(data?.summary?.totalUniqueCustomers ?? 0) || 0,
+    }
+
+    const salesDataNorm: SalesData[] = Array.isArray(data?.salesData) ? data.salesData.map((d: any) => ({
+      date: d?.date ?? new Date().toISOString(),
+      sales: Number(d?.sales ?? 0) || 0,
+      transactions: Number(d?.transactions ?? 0) || 0,
+    })) : []
+
+    const categoryRaw: any[] = Array.isArray(data?.categoryData) ? data.categoryData : []
+    const totalCategorySales = categoryRaw.reduce((sum: number, it: any) => sum + (Number(it?.sales ?? 0) || 0), 0)
+    const categoryDataNorm: CategoryData[] = categoryRaw.map((item: any, idx: number) => {
+      const sales = Number(item?.sales ?? 0) || 0
+      const quantity = Number(item?.quantity ?? 0) || 0
+      const transactions = Number(item?.transactions ?? 0) || 0
+      const uniqueCustomers = Number(item?.uniqueCustomers ?? 0) || 0
+      const name = item?.name ?? `Kategori ${idx + 1}`
+      const fromValue = Number(item?.value ?? 0) || 0
+      // Fallback: jika totalSales = 0 tetapi ada penjualan per kategori, gunakan totalCategorySales
+      const percent = safeSummary.totalSales > 0
+        ? ((sales / safeSummary.totalSales) * 100)
+        : (totalCategorySales > 0
+            ? ((sales / totalCategorySales) * 100)
+            : fromValue)
+      return {
+        name,
+        value: Number.isFinite(percent) ? Number(percent.toFixed(1)) : 0,
+        color: item?.color || expenseColorPalette[idx % expenseColorPalette.length],
+        sales,
+        quantity,
+        transactions,
+        uniqueCustomers,
+        avgTicket: transactions > 0 ? sales / transactions : 0,
+        avgQuantityPerTransaction: transactions > 0 ? quantity / transactions : 0,
+      }
+    })
+
+    const topProductsNorm: TopProduct[] = Array.isArray(data?.topProducts) ? data.topProducts.map((p: any) => ({
+      name: p?.name ?? 'Produk',
+      quantity: Number(p?.quantity ?? 0) || 0,
+      revenue: Number(p?.revenue ?? 0) || 0,
+      transactions: Number(p?.transactions ?? 0) || 0,
+      uniqueCustomers: Number(p?.uniqueCustomers ?? 0) || 0,
+    })) : []
+
+    const hourlyNorm: any[] = Array.isArray(data?.hourlyAnalysis) ? data.hourlyAnalysis.map((h: any) => ({
+      hour: Number(h?.hour ?? 0) || 0,
+      transactions: Number(h?.transactions ?? 0) || 0,
+      sales: Number(h?.sales ?? 0) || 0,
+    })) : []
+
+    const weekdayNorm: any[] = Array.isArray(data?.weekdayAnalysis) ? data.weekdayAnalysis.map((w: any) => ({
+      day: Number(w?.day ?? 0) || 0,
+      transactions: Number(w?.transactions ?? 0) || 0,
+      sales: Number(w?.sales ?? 0) || 0,
+    })) : []
+
+    const paymentNorm: any[] = Array.isArray(data?.paymentMethodAnalysis) ? data.paymentMethodAnalysis.map((m: any) => ({
+      method: m?.method ?? 'UNKNOWN',
+      count: Number(m?.count ?? 0) || 0,
+      sales: Number(m?.sales ?? 0) || 0,
+    })) : []
+
+    const productVariantNorm: any = data?.productVariantAnalysis || { sizeData: [], colorData: [] }
+    const returnDataNorm: any = data?.returnData || { totalReturns: 0, totalReturnAmount: 0, returnRate: 0 }
+
+    return {
+      salesData: salesDataNorm,
+      categoryData: categoryDataNorm,
+      topProducts: topProductsNorm,
+      summary: safeSummary,
+      rfmAnalysis: data?.rfmAnalysis || null,
+      customerSegmentation: data?.customerSegmentation || null,
+      hourlyAnalysis: hourlyNorm,
+      weekdayAnalysis: weekdayNorm,
+      paymentMethodAnalysis: paymentNorm,
+      promotionAnalysis: data?.promotionAnalysis || [],
+      productVariantAnalysis: productVariantNorm,
+      returnData: returnDataNorm,
+    }
+  }
+
   // Fetch real-time data from API
   useEffect(() => {
     const fetchReportData = async () => {
       setLoading(true)
       try {
         console.log(`Fetching report data with range=${dateRange} and analysisType=${analysisType}`)
-        const response = await fetch(`/api/reports?range=${dateRange}&analysisType=${analysisType}`)
+        const response = await apiFetch(`/api/v1/reports?range=${dateRange}&analysisType=${analysisType}`)
         if (response.ok) {
           const data = await response.json()
           console.log('Received data from API:', data)
-          setSalesData(data.salesData || [])
-          setCategoryData(data.categoryData || [])
-          setTopProducts(data.topProducts || [])
-          setSummary(data.summary || {
-            totalSales: 0,
-            totalTransactions: 0,
-            averageTransaction: 0,
-            growth: 0,
-          })
+          const normalized = normalizeSalesReportData(data)
+          setSalesData(normalized.salesData)
+          setCategoryData(normalized.categoryData)
+          setTopProducts(normalized.topProducts)
+          setSummary(normalized.summary)
           
           // Set product variant analysis and return data (always available)
-          setProductVariantAnalysis(data.productVariantAnalysis || {
+          setProductVariantAnalysis(normalized.productVariantAnalysis || {
             sizeData: [],
             colorData: []
           })
-          setReturnData(data.returnData || {
+          setReturnData(normalized.returnData || {
             totalReturns: 0,
             totalReturnAmount: 0,
             returnRate: 0
           })
+          
+          // Fetch financial data to populate operational cards and enable category fallback
+          let finData: any = null
+          try {
+            const finRes = await apiFetch(`/api/v1/reports/financial?range=${dateRange}`)
+            if (finRes.ok) {
+              finData = await finRes.json()
+              const op = finData?.profitability?.operatingExpenses || {}
+              const total = finData?.profitability?.totalOperatingExpenses || 0
+              const opProfit = finData?.profitability?.operatingProfit || 0
+              const opMargin = finData?.profitability?.operatingProfitMargin || 0
+              const entries = Object.entries(op).map(([name, value], idx) => ({
+                name,
+                value: Number(value) || 0,
+                color: expenseColorPalette[idx % expenseColorPalette.length]
+              }))
+              setOperationalData({
+                operatingExpenses: entries,
+                totalOperatingExpenses: Number(total) || 0,
+                operatingProfit: Number(opProfit) || 0,
+                operatingProfitMargin: Number(opMargin) || 0,
+                grossSales: Number(finData?.revenue?.grossSales ?? 0),
+                netSales: Number(finData?.revenue?.netSales ?? 0)
+              })
+            } else {
+              setOperationalData({
+                operatingExpenses: [],
+                totalOperatingExpenses: 0,
+                operatingProfit: 0,
+                operatingProfitMargin: 0,
+                grossSales: 0,
+                netSales: 0
+              })
+            }
+          } catch (e) {
+            console.error('Error fetching financial data:', e)
+            setOperationalData({
+              operatingExpenses: [],
+              totalOperatingExpenses: 0,
+              operatingProfit: 0,
+              operatingProfitMargin: 0,
+              grossSales: 0,
+              netSales: 0
+            })
+          }
+          
+          // Fallback: jika categoryData kosong, gunakan categoryAnalysis dari financial (termasuk metrik)
+          try {
+            if ((!normalized.categoryData || normalized.categoryData.length === 0) && finData?.categoryAnalysis) {
+              const revenueMap = (finData.categoryAnalysis.revenue || {}) as Record<string, number>
+              const qtyMap = (finData.categoryAnalysis.quantity || {}) as Record<string, number>
+              const txMap = (finData.categoryAnalysis.transactions || {}) as Record<string, number>
+              const custMap = (finData.categoryAnalysis.uniqueCustomers || {}) as Record<string, number>
+
+              // Gabungkan semua kategori yang muncul pada salah satu map
+              const allCategoryNames = Array.from(new Set([
+                ...Object.keys(revenueMap),
+                ...Object.keys(qtyMap),
+                ...Object.keys(txMap),
+                ...Object.keys(custMap),
+              ]))
+
+              const totalSalesForPct = Number(normalized.summary?.totalSales ?? 0) || Number(finData?.revenue?.netSales ?? 0) || 0
+              const fallbackCategory = allCategoryNames.map((name, idx) => {
+                const sales = Number(revenueMap[name] ?? 0) || 0
+                const quantity = Number(qtyMap[name] ?? 0) || 0
+                const transactions = Number(txMap[name] ?? 0) || 0
+                const uniqueCustomers = Number(custMap[name] ?? 0) || 0
+                const pct = totalSalesForPct > 0 ? (sales * 100) / totalSalesForPct : 0
+                return {
+                  name,
+                  value: Number.isFinite(pct) ? Number(pct.toFixed(1)) : 0,
+                  color: expenseColorPalette[idx % expenseColorPalette.length],
+                  sales,
+                  quantity,
+                  transactions,
+                  uniqueCustomers,
+                  avgTicket: transactions > 0 ? sales / transactions : 0,
+                  avgQuantityPerTransaction: transactions > 0 ? quantity / transactions : 0
+                }
+              })
+              setCategoryData(fallbackCategory)
+            }
+          } catch (err) {
+            console.warn('Failed to build category fallback from financial data:', err)
+          }
           
           // Set advanced analytics data if available
           if (analysisType === 'advanced') {
@@ -197,54 +372,11 @@ export default function ReportsPage() {
               }
             }
             setRfmAnalysis(processedRfmAnalysis)
-            setCustomerSegmentation(data.customerSegmentation || null)
-            setHourlyAnalysis(data.hourlyAnalysis || [])
-            setWeekdayAnalysis(data.weekdayAnalysis || [])
-            setPaymentMethodAnalysis(data.paymentMethodAnalysis || [])
-            setPromotionAnalysis(data.promotionAnalysis || [])
-            // Fetch operational expenses from financial API
-            try {
-              const finRes = await fetch(`/api/reports/financial?range=${dateRange}`)
-              if (finRes.ok) {
-                const finData = await finRes.json()
-                const op = finData?.profitability?.operatingExpenses || {}
-                const total = finData?.profitability?.totalOperatingExpenses || 0
-                const opProfit = finData?.profitability?.operatingProfit || 0
-                const opMargin = finData?.profitability?.operatingProfitMargin || 0
-                const entries = Object.entries(op).map(([name, value], idx) => ({
-                  name,
-                  value: Number(value) || 0,
-                  color: expenseColorPalette[idx % expenseColorPalette.length]
-                }))
-                setOperationalData({
-                  operatingExpenses: entries,
-                  totalOperatingExpenses: Number(total) || 0,
-                  operatingProfit: Number(opProfit) || 0,
-                  operatingProfitMargin: Number(opMargin) || 0,
-                  grossSales: Number(finData?.revenue?.grossSales ?? 0),
-                  netSales: Number(finData?.revenue?.netSales ?? 0)
-                })
-              } else {
-                setOperationalData({
-                  operatingExpenses: [],
-                  totalOperatingExpenses: 0,
-                  operatingProfit: 0,
-                  operatingProfitMargin: 0,
-                  grossSales: 0,
-                  netSales: 0
-                })
-              }
-            } catch (e) {
-              console.error('Error fetching financial data:', e)
-              setOperationalData({
-                operatingExpenses: [],
-                totalOperatingExpenses: 0,
-                operatingProfit: 0,
-                operatingProfitMargin: 0,
-                grossSales: 0,
-                netSales: 0
-              })
-            }
+            setCustomerSegmentation(normalized.customerSegmentation)
+            setHourlyAnalysis(normalized.hourlyAnalysis)
+            setWeekdayAnalysis(normalized.weekdayAnalysis)
+            setPaymentMethodAnalysis(normalized.paymentMethodAnalysis)
+            setPromotionAnalysis(normalized.promotionAnalysis)
           } else {
             // Reset advanced analytics data when using basic analysis
             setRfmAnalysis(null)
@@ -253,12 +385,6 @@ export default function ReportsPage() {
             setWeekdayAnalysis([])
             setPaymentMethodAnalysis([])
             setPromotionAnalysis([])
-            setOperationalData({
-              operatingExpenses: [],
-              totalOperatingExpenses: 0,
-              operatingProfit: 0,
-              operatingProfitMargin: 0
-            })
           }
         } else {
           console.error('Failed to fetch report data')
@@ -408,6 +534,9 @@ export default function ReportsPage() {
               </Link>
               <Link href="/reports/financial" className="px-4 py-2 rounded-md hover:bg-white hover:shadow-sm font-medium text-gray-600 hover:text-gray-800 transition-all">
                 Keuangan
+              </Link>
+              <Link href="/reports/daily" className="px-4 py-2 rounded-md hover:bg-white hover:shadow-sm font-medium text-gray-600 hover:text-gray-800 transition-all">
+                Harian
               </Link>
             </div>
             
@@ -717,6 +846,29 @@ export default function ReportsPage() {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
+              {/* Daily Summary Table */}
+              {Array.isArray(salesData) && salesData.length > 0 && (
+                <div className="mt-6 overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2">Tanggal</th>
+                        <th className="text-right py-2">Penjualan</th>
+                        <th className="text-right py-2">Transaksi</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {salesData.map((d) => (
+                        <tr key={d.date} className="border-b">
+                          <td className="py-2">{formatDate(d.date)}</td>
+                          <td className="text-right">{formatCurrency(d.sales)}</td>
+                          <td className="text-right">{d.transactions}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
             
             {analysisType === 'advanced' && (
@@ -1008,7 +1160,7 @@ export default function ReportsPage() {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {topProducts.map((product, index) => {
-                      const contribution = (product.revenue / summary.totalSales) * 100
+                      const contribution = summary.totalSales > 0 ? ((product.revenue / summary.totalSales) * 100) : 0
                       return (
                         <tr key={product.name}>
                           <td className="px-6 py-4 whitespace-nowrap">
@@ -1083,7 +1235,7 @@ export default function ReportsPage() {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {categoryData.map((category, index) => {
-                      const contribution = (category.sales / summary.totalSales) * 100;
+                      const contribution = summary.totalSales > 0 ? ((category.sales / summary.totalSales) * 100) : 0;
                       return (
                         <tr key={category.name}>
                           <td className="px-6 py-4 whitespace-nowrap">
@@ -1516,6 +1668,11 @@ export default function ReportsPage() {
                 <div className="mt-6">
                   <h3 className="text-md font-semibold text-gray-900 mb-4">Distribusi Biaya Operasional</h3>
                   
+                  {operationalData.operatingExpenses.length === 0 ? (
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <p className="text-sm text-gray-600 italic">Tidak ada data biaya operasional untuk periode ini. Tambahkan biaya pada menu Keuangan atau pilih rentang tanggal yang berbeda.</p>
+                    </div>
+                  ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Pie Chart */}
                     <ResponsiveContainer width="100%" height={300}>
@@ -1588,6 +1745,7 @@ export default function ReportsPage() {
                       </table>
                     </div>
                   </div>
+                  )}
                 </div>
                 
                 <div className="mt-6 bg-gray-50 p-4 rounded-lg">

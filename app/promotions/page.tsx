@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useEffect, useCallback } from 'react'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import Navbar from '@/components/Navbar'
+import { apiFetch } from '@/lib/api'
 
 interface Product {
   id: string
@@ -39,7 +40,7 @@ interface Promotion {
 }
 
 export default function PromotionsPage() {
-  const { data: session, status } = useSession()
+  const { user, loading: authLoading } = useAuth()
   const router = useRouter()
   const [promotions, setPromotions] = useState<Promotion[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -72,10 +73,11 @@ export default function PromotionsPage() {
       if (filterActive !== 'all') params.append('active', filterActive)
       if (filterType !== 'all') params.append('type', filterType)
 
-      const response = await fetch(`/api/promotions?${params}`)
+      const response = await apiFetch(`/api/v1/promotions?${params}`)
       if (response.ok) {
         const data = await response.json()
-        setPromotions(data)
+        const list = Array.isArray((data as any)?.promotions) ? (data as any).promotions : Array.isArray(data) ? data : []
+        setPromotions(list)
       }
     } catch (error) {
       console.error('Error fetching promotions:', error)
@@ -85,26 +87,27 @@ export default function PromotionsPage() {
   }, [filterActive, filterType])
 
   useEffect(() => {
-    if (status === 'loading') return
-    if (!session) {
+    if (authLoading) return
+    if (!user) {
       router.push('/login')
       return
     }
-    if (session.user.role !== 'ADMIN') {
+    if (user.role !== 'ADMIN') {
       router.push('/dashboard')
       return
     }
     fetchPromotions()
     fetchProducts()
     fetchCategories()
-  }, [session, status, router, fetchPromotions])
+  }, [user, authLoading, router, fetchPromotions])
 
   const fetchProducts = async () => {
     try {
-      const response = await fetch('/api/products')
+      const response = await apiFetch('/api/v1/products?limit=1000&page=1')
       if (response.ok) {
         const data = await response.json()
-        setProducts(data)
+        const list = Array.isArray((data as any)?.products) ? (data as any).products : Array.isArray(data) ? data : []
+        setProducts(list)
       }
     } catch (error) {
       console.error('Error fetching products:', error)
@@ -113,10 +116,11 @@ export default function PromotionsPage() {
 
   const fetchCategories = async () => {
     try {
-      const response = await fetch('/api/categories')
+      const response = await apiFetch('/api/v1/categories')
       if (response.ok) {
         const data = await response.json()
-        setCategories(data)
+        const list = Array.isArray((data as any)?.categories) ? (data as any).categories : Array.isArray(data) ? data : []
+        setCategories(list)
       }
     } catch (error) {
       console.error('Error fetching categories:', error)
@@ -163,7 +167,7 @@ export default function PromotionsPage() {
         return
       }
 
-      const url = editingPromotion ? `/api/promotions/${editingPromotion.id}` : '/api/promotions'
+      const url = editingPromotion ? `/api/v1/promotions/${editingPromotion.id}` : '/api/v1/promotions'
       const method = editingPromotion ? 'PUT' : 'POST'
       
       // Format tanggal ke ISO string yang valid untuk Prisma
@@ -195,13 +199,14 @@ export default function PromotionsPage() {
 
       console.log('Sending data:', dataToSend)
       
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(dataToSend)
-      })
+      const response = await apiFetch(
+        url,
+        {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(dataToSend)
+        }
+      )
 
       if (response.ok) {
         setShowForm(false)
@@ -308,7 +313,7 @@ export default function PromotionsPage() {
     }
 
     try {
-      const response = await fetch(`/api/promotions/${promotion.id}`, {
+      const response = await apiFetch(`/api/v1/promotions/${promotion.id}`, {
         method: 'DELETE'
       })
 

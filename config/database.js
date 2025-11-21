@@ -1,29 +1,22 @@
 require('dotenv').config();
 
+const pickTruthy = (v) => ['true', '1', 'yes'].includes(String(v || '').toLowerCase());
+const enableSSL = pickTruthy(process.env.PGSSL || process.env.PG_SSL || process.env.POSTGRES_SSL);
+
+const base = {
+  dialect: 'postgres',
+  use_env_variable: 'DATABASE_URL',
+  logging: process.env.NODE_ENV === 'development' ? console.log : false,
+  dialectOptions: enableSSL ? { ssl: { require: true, rejectUnauthorized: false } } : {},
+  define: {
+    timestamps: true,
+    underscored: false,
+    freezeTableName: false,
+  },
+}
+
 module.exports = {
-  development: {
-    dialect: 'sqlite',
-    storage: './database/dev.db',
-    logging: console.log,
-    define: {
-      timestamps: true,
-      underscored: false,
-      freezeTableName: false
-    }
-  },
-  test: {
-    dialect: 'sqlite',
-    storage: ':memory:',
-    logging: false
-  },
-  production: {
-    dialect: 'sqlite',
-    storage: process.env.DATABASE_PATH || './database/production.db',
-    logging: false,
-    define: {
-      timestamps: true,
-      underscored: false,
-      freezeTableName: false
-    }
-  }
+  development: { ...base },
+  test: { ...base, logging: false },
+  production: { ...base, logging: false },
 };

@@ -730,15 +730,15 @@ const request = require('supertest');
 const app = require('../../app');
 
 describe('Products API', () => {
-  test('GET /api/products should return all products', async () => {
+  test('GET /api/v1/products should return all products', async () => {
     const response = await request(app)
-      .get('/api/products')
+      .get('/api/v1/products')
       .expect(200);
       
     expect(Array.isArray(response.body)).toBe(true);
   });
   
-  test('POST /api/products should create new product', async () => {
+  test('POST /api/v1/products should create new product', async () => {
     const productData = {
       name: 'Test Product',
       price: 100,
@@ -748,7 +748,7 @@ describe('Products API', () => {
     };
     
     const response = await request(app)
-      .post('/api/products')
+      .post('/api/v1/products')
       .send(productData)
       .expect(201);
       

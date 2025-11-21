@@ -9,10 +9,5 @@
   },
   "github": {
     "silent": true
-  },
-  "env": {
-    "DATABASE_URL": "prisma+postgres://accelerate.prisma-data.net/?api_key=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcGlfa2V5IjoiMDFKWTNHOTNNN0c5VDQxMTkyWjNWVkJWREoiLCJ0ZW5hbnRfaWQiOiIzMDc4OTEwYzg2OTg2MzFkZjcxNmZhNGE0MmMzMjM1Y2IwMTdiMmY3ZDExYWZmNmIxYzNjMDE2NDk5YTgyM2ZjIiwiaW50ZXJuYWxfc2VjcmV0IjoiMDkxOTJlY2MtNmM5Mi00MzM0LTgyNzYtNTA2YzAyNjBhYWI3In0.OBpHIkXoyirglHz7l3yoJpMMvyaHePFxjMX2lg9F6_Y",
-    "NEXTAUTH_URL": "https://pos-fashion-app.vercel.app",
-    "NEXTAUTH_SECRET": "your-production-secret-key-here"
   }
 }

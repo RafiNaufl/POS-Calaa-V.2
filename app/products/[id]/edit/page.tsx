@@ -9,6 +9,7 @@ import {
   PhotoIcon,
 } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
+import { apiFetch } from '@/lib/api'
 
 interface Category {
   id: string
@@ -68,12 +69,10 @@ export default function EditProductPage() {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const response = await fetch('/api/categories')
-        if (!response.ok) {
-          throw new Error('Failed to fetch categories')
-        }
-        const data = await response.json()
-        setCategories(data)
+const res = await apiFetch('/api/v1/categories')
+        if (!res.ok) throw new Error('Failed to fetch categories')
+        const data = await res.json()
+        setCategories(Array.isArray(data) ? data : (Array.isArray((data as any)?.categories) ? (data as any).categories : []))
       } catch (error) {
         console.error('Error fetching categories:', error)
         toast.error('Gagal memuat data kategori')
@@ -82,11 +81,9 @@ export default function EditProductPage() {
 
     const fetchProduct = async () => {
       try {
-        const response = await fetch(`/api/products/${productId}`)
-        if (!response.ok) {
-          throw new Error('Failed to fetch product')
-        }
-        const product = await response.json()
+const res = await apiFetch(`/api/v1/products/${productId}`)
+        if (!res.ok) throw new Error('Failed to fetch product')
+        const product = await res.json()
         
         setForm({
           name: product.name,
@@ -178,16 +175,13 @@ export default function EditProductPage() {
       }
       
       // Send to API
-      const response = await fetch(`/api/products/${productId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(productData),
+const res = await apiFetch(`/api/v1/products/${productId}`, {
+  method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(productData)
       })
-      
-      if (!response.ok) {
-        const errorData = await response.json()
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Gagal memperbarui produk' }))
         throw new Error(errorData.error || 'Gagal memperbarui produk')
       }
       

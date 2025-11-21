@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { signIn, getSession } from "next-auth/react"
+import { login } from "@/lib/auth-client"
 import { useRouter } from "next/navigation"
 import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline"
 import toast from "react-hot-toast"
@@ -18,26 +18,15 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      const result = await signIn("credentials", {
-        email,
-        password,
-        redirect: false
-      })
-
-      if (result?.error) {
-        toast.error("Email atau password salah")
+      const result = await login(email, password)
+      toast.success("Login berhasil!")
+      const role = result?.user?.role
+      if (role === "ADMIN") {
+        router.push("/dashboard")
+      } else if (role === "CASHIER") {
+        router.push("/cashier")
       } else {
-        toast.success("Login berhasil!")
-        const session = await getSession()
-        
-        // Redirect based on role
-        if (session?.user?.role === "ADMIN") {
-          router.push("/dashboard")
-        } else if (session?.user?.role === "CASHIER") {
-          router.push("/cashier")
-        } else {
-          router.push("/dashboard")
-        }
+        router.push("/dashboard")
       }
     } catch (error) {
       toast.error("Terjadi kesalahan saat login")

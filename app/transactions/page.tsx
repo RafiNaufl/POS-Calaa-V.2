@@ -20,6 +20,7 @@ import {
 import ReceiptPreview from '../../components/ReceiptPreview'
 import Navbar from '@/components/Navbar'
 import { toast } from 'react-hot-toast'
+import { apiFetch } from '@/lib/api'
 
 interface Transaction {
   id: string
@@ -68,14 +69,14 @@ export default function TransactionsPage() {
 
   // Fetch transactions from API using SWR for real-time updates
   const fetcher = async (url: string) => {
-    const response = await fetch(url)
+    const response = await apiFetch(url)
     if (!response.ok) {
       throw new Error('Failed to fetch transactions')
     }
     return response.json()
   }
 
-  const { data, error, isLoading, mutate } = useSWR('/api/transactions', fetcher, {
+  const { data, error, isLoading, mutate } = useSWR('/api/v1/transactions', fetcher, {
     refreshInterval: 5000, // Refresh every 5 seconds
     revalidateOnFocus: true,
     dedupingInterval: 2000
@@ -98,7 +99,12 @@ export default function TransactionsPage() {
       return {
         id: transaction.id,
         date: validDate.toISOString(),
-        time: validDate.toLocaleTimeString('id-ID'),
+        time: validDate.toLocaleTimeString('id-ID', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          timeZone: 'Asia/Jakarta'
+        }),
         items: transaction.items.map((item: any) => ({
           id: item.id,
           name: item.product.name,
@@ -244,6 +250,7 @@ export default function TransactionsPage() {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
+      timeZone: 'Asia/Jakarta'
     })
   }
 
@@ -326,7 +333,7 @@ export default function TransactionsPage() {
         phone = input
       }
   
-      const res = await fetch('/api/whatsapp/send-receipt', {
+      const res = await apiFetch('/api/v1/whatsapp/send-receipt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transactionId: transaction.id, phoneNumber: phone, receiptType: 'detailed' }),
@@ -363,7 +370,7 @@ export default function TransactionsPage() {
     
     setActionLoading(true)
     try {
-      const response = await fetch(`/api/transactions/${actionTransaction.id}/refund`, {
+      const response = await apiFetch(`/api/v1/transactions/${actionTransaction.id}/refund`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -391,7 +398,7 @@ export default function TransactionsPage() {
     
     setActionLoading(true)
     try {
-      const response = await fetch(`/api/transactions/${actionTransaction.id}/cancel`, {
+      const response = await apiFetch(`/api/v1/transactions/${actionTransaction.id}/cancel`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -418,9 +425,8 @@ export default function TransactionsPage() {
     setActionTransaction(transaction)
     setActionLoading(true)
     try {
-      const response = await fetch('/api/payments/card/confirm', {
+      const response = await apiFetch('/api/v1/payments/card/confirm', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transactionId: transaction.id })
       })
       if (response.ok) {

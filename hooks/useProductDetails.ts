@@ -39,7 +39,7 @@ export function useProductDetails(productId: string): UseProductDetailsReturn {
     setError(null)
     
     try {
-      const response = await fetch(`/api/products/${productId}`)
+      const response = await fetch(`/api/v1/products/${productId}`)
       
       if (!response.ok) {
         throw new Error(`Failed to fetch product details: ${response.statusText}`)

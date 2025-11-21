@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import Image from "next/image"
 import { PhotoIcon, XCircleIcon, ArrowUpTrayIcon } from "@heroicons/react/24/outline"
 import toast from "react-hot-toast"
+import { apiFetch } from "@/lib/api"
 
 interface Category {
   id: string
@@ -50,15 +51,23 @@ export default function AddProductForm({ onClose, onSuccess }: AddProductFormPro
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const response = await fetch("/api/categories")
-        if (!response.ok) {
+        const res = await apiFetch("/api/v1/categories")
+        if (!res.ok) {
           throw new Error("Failed to fetch categories")
         }
-        const data = await response.json()
-        setCategories(data)
+        const data = await res.json()
+        // Normalize response to a flat array of {id, name}
+        const normalized: Category[] = Array.isArray(data)
+          ? data.map((c: any) => ({ id: String(c?.id ?? ''), name: String(c?.name ?? '') }))
+          : Array.isArray((data as any)?.categories)
+            ? (data as any).categories.map((c: any) => ({ id: String(c?.id ?? ''), name: String(c?.name ?? '') }))
+            : []
+        setCategories(normalized)
       } catch (error) {
         console.error("Error fetching categories:", error)
         toast.error("Gagal memuat data kategori")
+        // Keep categories as an empty array to prevent UI crash
+        setCategories([])
       }
     }
 
@@ -166,7 +175,7 @@ export default function AddProductForm({ onClose, onSuccess }: AddProductFormPro
       }
       
       // Send to API
-      const response = await fetch("/api/products", {
+      const response = await apiFetch("/api/v1/products", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

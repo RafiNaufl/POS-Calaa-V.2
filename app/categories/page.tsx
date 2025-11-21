@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import { useAuth } from '@/hooks/useAuth'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   PlusIcon,
@@ -11,6 +13,7 @@ import {
 } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import Navbar from '@/components/Navbar'
+import { apiFetch } from '@/lib/api'
 
 interface Category {
   id: string
@@ -21,6 +24,8 @@ interface Category {
 }
 
 export default function CategoriesPage() {
+  const { user, loading: authLoading } = useAuth()
+  const router = useRouter()
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
@@ -28,22 +33,38 @@ export default function CategoriesPage() {
   const [formData, setFormData] = useState({ name: '', description: '' })
   const [formErrors, setFormErrors] = useState({ name: '', description: '' })
 
-  // Fetch categories from API
+  // Redirect and gating
+  useEffect(() => {
+    if (authLoading) return
+    if (!user) {
+      router.push('/login')
+      return
+    }
+    if (user.role !== 'ADMIN') {
+      router.push('/dashboard')
+      toast.error('Hanya admin yang dapat mengakses halaman ini')
+      return
+    }
+  }, [authLoading, user, router])
+
+  // Fetch categories from API (only when authenticated admin)
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const response = await fetch('/api/categories')
+  const response = await apiFetch('/api/v1/categories')
         if (!response.ok) {
           throw new Error('Failed to fetch categories')
         }
         const data = await response.json()
-        
+
         // Transform data to match our component's format
-        const transformedCategories = data.map((category: any) => ({
+        const list = data.categories || data
+        const transformedCategories = list.map((category: any) => ({
           id: category.id,
           name: category.name,
           description: category.description || '',
-          productCount: category._count?.products || 0,
+          // Prefer backend v1 field `productCount`; fallback to Prisma-style `_count.products`
+          productCount: typeof category.productCount === 'number' ? category.productCount : (category._count?.products || 0),
           createdAt: new Date(category.createdAt).toISOString().split('T')[0],
         }))
         
@@ -88,8 +109,10 @@ export default function CategoriesPage() {
       }
     }
     
-    fetchCategories()
-  }, [])
+    if (user && user.role === 'ADMIN') {
+      fetchCategories()
+    }
+  }, [user])
 
   const validateForm = () => {
     const errors = { name: '', description: '' }
@@ -116,14 +139,13 @@ export default function CategoriesPage() {
 
     try {
       if (editingCategory) {
-        // Update category via API
-        const response = await fetch('/api/categories', {
+        // Update category via API (v1)
+  const response = await apiFetch(`/api/v1/categories/${editingCategory.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            id: editingCategory.id,
             name: formData.name,
             description: formData.description,
           }),
@@ -150,8 +172,8 @@ export default function CategoriesPage() {
         toast.success('Kategori berhasil diperbarui')
         setEditingCategory(null)
       } else {
-        // Add new category via API
-        const response = await fetch('/api/categories', {
+        // Add new category via API (v1)
+  const response = await apiFetch('/api/v1/categories', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -206,8 +228,8 @@ export default function CategoriesPage() {
     
     if (confirm('Apakah Anda yakin ingin menghapus kategori ini?')) {
       try {
-        // Delete category via API
-        const response = await fetch(`/api/categories?id=${id}`, {
+        // Delete category via API (v1)
+  const response = await apiFetch(`/api/v1/categories/${id}`, {
           method: 'DELETE',
         })
         

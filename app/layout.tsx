@@ -4,6 +4,8 @@ import { Inter } from 'next/font/google'
 import { Toaster } from 'react-hot-toast'
 import SessionProvider from '@/components/SessionProvider'
 import './globals.css'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -12,15 +14,16 @@ export const metadata: Metadata = {
   description: 'Sistem Point of Sale untuk toko baju dengan fitur lengkap',
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const session = await getServerSession(authOptions)
   return (
     <html lang="id">
       <body className={inter.className}>
-        <SessionProvider>
+        <SessionProvider session={session as any}>
           <div className="min-h-screen bg-gray-50">
             {children}
           </div>

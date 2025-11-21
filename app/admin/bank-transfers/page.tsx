@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
+import { apiFetch } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 import { FaCheckCircle, FaTimesCircle } from 'react-icons/fa'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -21,34 +22,35 @@ type Transaction = {
 }
 
 export default function BankTransfersPage() {
-  const { data: session, status } = useSession()
+  const { user, loading: authLoading } = useAuth()
   const router = useRouter()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [confirming, setConfirming] = useState<string | null>(null)
 
   useEffect(() => {
-    if (status === 'unauthenticated') {
+    if (authLoading) return
+    if (!user) {
       router.push('/login')
-    } else if (session?.user?.role !== 'ADMIN') {
+    } else if (user.role !== 'ADMIN') {
       router.push('/dashboard')
       toast.error('Hanya admin yang dapat mengakses halaman ini')
-    } else if (status === 'authenticated') {
+    } else {
       fetchPendingTransactions()
     }
-  }, [status, session, router])
+  }, [authLoading, user, router])
 
   const fetchPendingTransactions = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/transactions?paymentMethod=BANK_TRANSFER&status=PENDING')
+      const response = await apiFetch('/api/v1/transactions?paymentMethod=BANK_TRANSFER&status=PENDING')
       
       if (!response.ok) {
         throw new Error('Failed to fetch transactions')
       }
       
       const data = await response.json()
-      setTransactions(data)
+      setTransactions(data.transactions || [])
     } catch (error) {
       console.error('Error fetching transactions:', error)
       toast.error('Gagal memuat data transaksi')
@@ -61,11 +63,8 @@ export default function BankTransfersPage() {
     try {
       setConfirming(transactionId)
       
-      const response = await fetch('/api/payments/bank-transfer/confirm', {
+      const response = await apiFetch('/api/v1/payments/bank-transfer/confirm', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({ transactionId })
       })
       
@@ -97,7 +96,7 @@ export default function BankTransfersPage() {
     }).format(date)
   }
 
-  if (status === 'loading' || loading) {
+  if (authLoading || loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <LoadingSpinner size={40} />

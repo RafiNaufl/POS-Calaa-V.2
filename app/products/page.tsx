@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import useSWR from 'swr'
+import { apiFetch, apiSWRFetcher } from '@/lib/api'
 import ProductImage from '@/components/ProductImage'
 import {
   PlusIcon,
@@ -119,16 +120,21 @@ export default function ProductsPage() {
     }
     try {
       setIsImporting(true)
-      const formData = new FormData()
-      formData.append('file', csvFile)
-      formData.append('duplicateStrategy', duplicateStrategy)
-      formData.append('autoCreateCategory', String(autoCreateCategory))
-      const res = await fetch('/api/products/import', { method: 'POST', body: formData })
-      const data = await res.json()
+      const text = await csvFile.text()
+      const res = await apiFetch('/api/v1/products/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          csvText: text,
+          duplicateStrategy,
+          autoCreateCategory
+        })
+      })
+      const payload = await res.json().catch(() => ({ error: 'Gagal import CSV' }))
       if (!res.ok) {
-        throw new Error(data?.error || 'Gagal import CSV')
+        throw new Error(payload?.error || 'Gagal import CSV')
       }
-      const summary = data?.summary
+      const summary = payload?.summary
       setImportSummary(summary || null)
       toast.success(`Import selesai: ${summary?.createdCount || 0} dibuat, ${summary?.updatedCount || 0} diperbarui, ${summary?.skippedCount || 0} dilewati`)
       await refreshProducts()
@@ -167,17 +173,17 @@ export default function ProductsPage() {
 
   // Fetch products with SWR for real-time updates
   const { data: productsData, error: productsError, isLoading: productsLoading, mutate: refreshProducts } = useSWR(
-    '/api/products?includeInactive=true', 
-    fetcher, 
+    '/api/v1/products?includeInactive=true&limit=1000&page=1',
+    apiSWRFetcher,
     {
-      refreshInterval: 5000, // Refresh every 5 seconds
+      refreshInterval: 5000,
       revalidateOnFocus: true,
-      dedupingInterval: 2000
+      dedupingInterval: 2000,
     }
   )
 
-  // Fetch categories with SWR
-  const { data: categoriesData, error: categoriesError } = useSWR('/api/categories', fetcher)
+  // Fetch categories with SWR (use Next API to leverage cookie-based session)
+  const { data: categoriesData, error: categoriesError } = useSWR('/api/v1/categories', apiSWRFetcher)
 
   // Transform products data
   useEffect(() => {
@@ -205,12 +211,15 @@ export default function ProductsPage() {
 
   // Set categories data
   useEffect(() => {
-    if (categoriesData && Array.isArray(categoriesData)) {
-      const transformedCategories = categoriesData.map((category: any) => ({
-        id: category.id.toString(),
-        name: category.name
-      }))
-      setCategories(transformedCategories)
+    if (categoriesData) {
+      const list = (categoriesData as any).categories || categoriesData
+      if (Array.isArray(list)) {
+        const transformedCategories = list.map((category: any) => ({
+          id: category.id.toString(),
+          name: category.name
+        }))
+        setCategories(transformedCategories)
+      }
     }
   }, [categoriesData])
 
@@ -429,12 +438,12 @@ export default function ProductsPage() {
   const deleteProduct = async (id: string) => {
     if (confirm('Apakah Anda yakin ingin menghapus produk ini?')) {
       try {
-        const response = await fetch(`/api/products?id=${id}`, {
-          method: 'DELETE',
+        const response = await apiFetch(`/api/v1/products/${id}`, {
+          method: 'DELETE'
         })
         
         if (!response.ok) {
-          const errorData = await response.json()
+          const errorData = await response.json().catch(() => ({ error: 'Gagal menghapus produk' }))
           throw new Error(errorData.error || 'Gagal menghapus produk')
         }
         
@@ -564,12 +573,12 @@ export default function ProductsPage() {
               </label>
             </div>
 
-            {/* Stats */}
-            <div className="text-right">
-              <p className="text-sm text-gray-500">
-                Menampilkan {filteredProducts.length} dari {products.length} produk
-              </p>
-            </div>
+        {/* Stats */}
+        <div className="text-right">
+          <p className="text-sm text-gray-500">
+            Menampilkan {filteredProducts.length} dari {productsData?.pagination?.totalCount ?? products.length} produk
+          </p>
+        </div>
           </div>
         </div>
 
