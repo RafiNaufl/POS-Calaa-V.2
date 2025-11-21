@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from 'react'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import toast from 'react-hot-toast'
 
 interface CSVImportModalProps {
@@ -173,8 +173,8 @@ export default function CSVImportModal({ open, onClose, onImported, importEndpoi
         <div className="bg-white">
           {/* Header */}
           <div className="px-6 pt-6">
-            <h2 className="text-lg font-semibold text-gray-900">Import CSV Produk</h2>
-            <p className="mt-1 text-sm text-gray-600">Unggah file CSV, lihat preview data, lalu konfirmasi untuk memulai impor.</p>
+            <DialogTitle className="text-lg font-semibold text-gray-900">Import CSV Produk</DialogTitle>
+            <DialogDescription className="mt-1 text-sm text-gray-600">Unggah file CSV, lihat preview data, lalu konfirmasi untuk memulai impor.</DialogDescription>
           </div>
 
           {/* Content */}
