@@ -5,6 +5,17 @@ import CredentialsProvider from 'next-auth/providers/credentials'
 // ---- Custom Auth Helpers (Express-based) ----
 const TOKEN_KEY = 'pos.accessToken'
 
+function normalizeBackendBase(raw?: string) {
+  let base = (raw || '').trim()
+  if (!base) return 'http://localhost:4000'
+  if (!/^https?:\/\//i.test(base)) {
+    base = base.replace(/^\/+/, '')
+    base = `https://${base}`
+  }
+  base = base.replace(/\/+$/, '')
+  return base
+}
+
 export function setAccessToken(token: string | null) {
   if (typeof window === 'undefined') return
   if (!token) {
@@ -20,7 +31,7 @@ export function getAccessToken(): string | null {
 }
 
 export async function login(email: string, password: string) {
-  const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000'
+  const backendBase = normalizeBackendBase(process.env.NEXT_PUBLIC_BACKEND_URL || process.env.BACKEND_URL || 'http://localhost:4000')
   const res = await fetch(`${backendBase}/api/v1/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -37,7 +48,7 @@ export async function login(email: string, password: string) {
 }
 
 export async function logout() {
-  const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000'
+  const backendBase = normalizeBackendBase(process.env.NEXT_PUBLIC_BACKEND_URL || process.env.BACKEND_URL || 'http://localhost:4000')
   try {
     await fetch(`${backendBase}/api/v1/auth/logout`, { method: 'POST' })
   } catch (_) {}
@@ -71,7 +82,7 @@ export const authOptions: NextAuthOptions = {
 
         try {
           // Delegate credential verification to backend Express API
-          const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.BACKEND_URL || 'http://localhost:4000'
+          const backendBase = normalizeBackendBase(process.env.NEXT_PUBLIC_BACKEND_URL || process.env.BACKEND_URL || 'http://localhost:4000')
           const res = await fetch(`${backendBase}/api/v1/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
