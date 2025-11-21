@@ -67,11 +67,15 @@ router.post(
   async (req, res) => {
     try {
       const data = req.body
+      const category = await db.Category.findByPk(String(data.categoryId))
+      if (!category) {
+        return res.status(400).json({ error: 'Category not found' })
+      }
       const created = await db.Product.create({
         name: data.name,
         price: Number(data.price),
         stock: Number(data.stock || 0),
-        categoryId: data.categoryId,
+        categoryId: String(data.categoryId),
         color: data.color,
         size: data.size,
         description: data.description || null,
