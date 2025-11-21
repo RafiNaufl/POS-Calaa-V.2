@@ -71,18 +71,36 @@ router.post(
       if (!category) {
         return res.status(400).json({ error: 'Category not found' })
       }
-      const created = await db.Product.create({
-        name: data.name,
-        price: Number(data.price),
-        stock: Number(data.stock || 0),
+      const toNumber = (val) => {
+        if (val === null || val === undefined) return null
+        const s = String(val)
+        const cleaned = s.replace(/[^0-9.\-]/g, '')
+        return cleaned === '' ? null : Number(cleaned)
+      }
+      const price = toNumber(data.price)
+      const stock = toNumber(data.stock)
+      const costPrice = toNumber(data.costPrice)
+      const payload = {
+        name: String(data.name),
+        price: Number(price ?? 0),
+        stock: Number(stock ?? 0),
         categoryId: String(data.categoryId),
-        color: data.color,
-        size: data.size,
-        description: data.description || null,
-        image: data.image || null
-      })
+        color: String(data.color),
+        size: String(data.size),
+        description: data.description ? String(data.description) : null,
+        image: data.image ? String(data.image) : null,
+      }
+      if (costPrice !== null) payload.costPrice = Number(costPrice)
+      if (data.productCode && String(data.productCode).trim() !== '') {
+        payload.productCode = String(data.productCode).trim()
+      }
+      const created = await db.Product.create(payload)
       res.status(201).json(created)
     } catch (err) {
+      const name = String(err?.name || '')
+      if (name === 'SequelizeValidationError' || name === 'SequelizeUniqueConstraintError') {
+        return res.status(400).json({ error: err?.message || 'Validation error' })
+      }
       console.error('[Express] Error creating product:', err)
       res.status(500).json({ error: 'Failed to create product' })
     }
