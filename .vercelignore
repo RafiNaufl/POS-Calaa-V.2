@@ -59,8 +59,9 @@ Thumbs.db
 *.md
 docs/
 
-# Scripts that might cause issues
-scripts/
+# Scripts
+# Jangan exclude seluruh folder scripts, karena build membutuhkan
+# `scripts/check-env-frontend.js` untuk linting environment di Vercel.
 
 # Query files
 *.sql
