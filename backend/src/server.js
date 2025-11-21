@@ -55,7 +55,9 @@ function buildApp () {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
+    // Do not hardcode allowed headers; let the cors middleware reflect
+    // the browser's Access-Control-Request-Headers to avoid preflight
+    // failures when clients send additional headers like Cache-Control
   }
   app.use(cors(corsOptions))
   app.options('*', cors(corsOptions))
