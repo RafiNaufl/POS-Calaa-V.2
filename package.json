@@ -5,7 +5,7 @@
   "scripts": {
     "predev": "node scripts/check-env-frontend.js",
     "dev": "next dev",
-    "prebuild": "node scripts/check-env-frontend.js",
+    "prebuild": "node scripts/prebuild.js",
     "build": "NEXT_DISABLE_ESLINT=1 SKIP_LINT=1 next build",
     "start": "next start",
     "lint": "next lint --quiet",
