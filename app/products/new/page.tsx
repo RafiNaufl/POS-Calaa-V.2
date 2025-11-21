@@ -5,6 +5,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
+import { apiSWRFetcher, apiFetch } from '@/lib/api'
 import {
   ArrowLeftIcon,
   PhotoIcon,
@@ -23,6 +24,8 @@ interface ProductForm {
   costPrice: string
   stock: string
   categoryId: string
+  color: string
+  size: string
   image: string
 }
 
@@ -37,26 +40,23 @@ export default function NewProductPage() {
     costPrice: '',
     stock: '',
     categoryId: '',
+    color: '',
+    size: '',
     image: '',
   })
   const [errors, setErrors] = useState<Partial<ProductForm>>({})
 
   // Fetcher function for SWR
-  const fetcher = async (url: string) => {
-    const response = await fetch(url)
-    if (!response.ok) {
-      throw new Error('Failed to fetch data')
-    }
-    return response.json()
-  }
+  const fetcher = apiSWRFetcher
 
   // Fetch categories with SWR
-  const { data: categoriesData, error: categoriesError } = useSWR('/api/categories', fetcher)
+const { data: categoriesData, error: categoriesError } = useSWR('/api/v1/categories', fetcher)
 
   // Set categories data
   useEffect(() => {
     if (categoriesData) {
-      const transformedCategories = categoriesData.map((category: any) => ({
+      const list = categoriesData.categories || categoriesData
+      const transformedCategories = list.map((category: any) => ({
         id: category.id.toString(),
         name: category.name
       }))
@@ -116,6 +116,14 @@ export default function NewProductPage() {
       newErrors.categoryId = 'Kategori wajib dipilih'
     }
 
+    if (!form.color.trim()) {
+      newErrors.color = 'Warna wajib diisi'
+    }
+
+    if (!form.size.trim()) {
+      newErrors.size = 'Ukuran wajib diisi'
+    }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -136,16 +144,17 @@ export default function NewProductPage() {
         name: form.name,
         description: form.description,
         price: Number(form.price),
-        costPrice: form.costPrice.trim() ? Number(form.costPrice) : 0,
         stock: Number(form.stock),
         categoryId: form.categoryId,
+        color: form.color.trim(),
+        size: form.size.trim(),
         image: form.image,
         isActive: true
       }
       
       // Make actual API call
-      const response = await fetch('/api/products', {
-        method: 'POST',
+const response = await apiFetch('/api/v1/products', {
+  method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -383,6 +392,48 @@ export default function NewProductPage() {
                 />
                 {errors.stock && (
                   <p className="mt-1 text-sm text-red-600">{errors.stock}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Color and Size */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label htmlFor="color" className="block text-sm font-medium text-gray-700 mb-2">
+                  Warna *
+                </label>
+                <input
+                  type="text"
+                  id="color"
+                  name="color"
+                  value={form.color}
+                  onChange={handleInputChange}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                    errors.color ? 'border-red-300' : 'border-gray-300'
+                  }`}
+                  placeholder="Misal: Merah"
+                />
+                {errors.color && (
+                  <p className="mt-1 text-sm text-red-600">{errors.color}</p>
+                )}
+              </div>
+              <div>
+                <label htmlFor="size" className="block text-sm font-medium text-gray-700 mb-2">
+                  Ukuran *
+                </label>
+                <input
+                  type="text"
+                  id="size"
+                  name="size"
+                  value={form.size}
+                  onChange={handleInputChange}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                    errors.size ? 'border-red-300' : 'border-gray-300'
+                  }`}
+                  placeholder="Misal: M, L, 42"
+                />
+                {errors.size && (
+                  <p className="mt-1 text-sm text-red-600">{errors.size}</p>
                 )}
               </div>
             </div>

@@ -16,12 +16,12 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   experimental: {
-    serverComponentsExternalPackages: ['prisma', 'sqlite3', 'sequelize'],
+    serverComponentsExternalPackages: ['prisma', 'sequelize', 'pg'],
   },
   webpack: (config, { isServer }) => {
     if (isServer) {
       config.externals = Array.isArray(config.externals)
-        ? [...config.externals, 'sqlite3', 'sequelize']
+        ? [...config.externals, 'sequelize', 'pg']
         : config.externals
       
     }

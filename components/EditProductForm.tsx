@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import Image from "next/image"
 import { PhotoIcon, XCircleIcon, ArrowUpTrayIcon } from "@heroicons/react/24/outline"
 import toast from "react-hot-toast"
+import { apiFetch } from "@/lib/api"
 
 interface Category {
   id: string
@@ -52,12 +53,17 @@ export default function EditProductForm({ productId, onClose, onSuccess }: EditP
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const response = await fetch('/api/categories')
-        if (!response.ok) {
-          throw new Error('Failed to fetch categories')
-        }
-        const data = await response.json()
-        setCategories(data)
+        const res = await apiFetch('/api/v1/categories')
+        if (!res.ok) throw new Error('Failed to fetch categories')
+        const data = await res.json()
+        // Normalize response: API returns { count, categories } but support flat array too
+        const list = Array.isArray((data as any)?.categories)
+          ? (data as any).categories
+          : Array.isArray(data)
+            ? data
+            : []
+        const normalized: Category[] = list.map((c: any) => ({ id: String(c?.id ?? ''), name: String(c?.name ?? '') }))
+        setCategories(normalized)
       } catch (error) {
         console.error('Error fetching categories:', error)
         toast.error('Gagal memuat data kategori')
@@ -66,11 +72,9 @@ export default function EditProductForm({ productId, onClose, onSuccess }: EditP
 
     const fetchProduct = async () => {
       try {
-        const response = await fetch(`/api/products/${productId}`)
-        if (!response.ok) {
-          throw new Error('Failed to fetch product')
-        }
-        const product = await response.json()
+        const res = await apiFetch(`/api/v1/products/${productId}`)
+        if (!res.ok) throw new Error('Failed to fetch product')
+        const product = await res.json()
         
         setForm({
           name: product.name,
@@ -101,9 +105,9 @@ export default function EditProductForm({ productId, onClose, onSuccess }: EditP
     // Helper function to fetch category by ID
     const fetchCategoryById = async (categoryId: string) => {
       try {
-        const response = await fetch(`/api/categories/${categoryId}`)
-        if (!response.ok) return null
-        return await response.json()
+        const res = await apiFetch(`/api/v1/categories/${categoryId}`)
+        if (!res.ok) return null
+        return await res.json()
       } catch (error) {
         console.error('Error fetching category:', error)
         return null
@@ -215,16 +219,13 @@ export default function EditProductForm({ productId, onClose, onSuccess }: EditP
       }
       
       // Send to API
-      const response = await fetch(`/api/products/${productId}`, {
+      const res = await apiFetch(`/api/v1/products/${productId}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(productData),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(productData)
       })
-      
-      if (!response.ok) {
-        const errorData = await response.json()
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Gagal memperbarui produk' }))
         throw new Error(errorData.error || 'Gagal memperbarui produk')
       }
       

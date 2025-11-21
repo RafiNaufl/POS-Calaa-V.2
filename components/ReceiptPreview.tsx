@@ -71,7 +71,8 @@ const formatDate = (dateString: string) => {
   return validDate.toLocaleDateString('id-ID', {
     day: '2-digit',
     month: '2-digit',
-    year: 'numeric'
+    year: 'numeric',
+    timeZone: 'Asia/Jakarta'
   })
 }
 
@@ -244,7 +245,7 @@ export default function ReceiptPreview({ transaction, isOpen, onClose, onPrint }
           <div>Terima kasih atas kunjungan Anda!</div>
           <div>Barang yang sudah dibeli tidak dapat dikembalikan</div>
           <div className="dashed-line"></div>
-          <div>Dicetak pada: ${new Date().toLocaleString('id-ID')}</div>
+          <div>Dicetak pada: ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}</div>
         </div>
       </body>
       </html>

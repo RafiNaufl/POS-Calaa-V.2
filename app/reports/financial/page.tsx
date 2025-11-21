@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { apiFetch } from '@/lib/api'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -46,15 +47,54 @@ export default function FinancialReportPage() {
   const [financialData, setFinancialData] = useState<any>(null)
   const [selectedRange, setSelectedRange] = useState('30days')
 
+  // Normalize incoming financial data to ensure categoryAnalysis shape is safe
+  const normalizeFinancialData = (data: any) => {
+    if (!data) return data
+    const ca = data.categoryAnalysis || {}
+    const revenue = ca.revenue || {}
+    const cogs = ca.cogs || {}
+    const profit = ca.profit || {}
+    const margin = ca.margin || {}
+
+    // If cogs missing, fallback to costs.cogsByCategory
+    const cogsSource = Object.keys(cogs).length ? cogs : (data.costs?.cogsByCategory || {})
+
+    const categories = Array.from(new Set([
+      ...Object.keys(revenue),
+      ...Object.keys(cogsSource),
+      ...Object.keys(profit),
+      ...Object.keys(margin),
+    ]))
+
+    const normalized = {
+      revenue: { ...revenue },
+      cogs: { ...cogsSource },
+      profit: { ...profit },
+      margin: { ...margin },
+    }
+
+    categories.forEach((cat) => {
+      const rev = normalized.revenue[cat] ?? 0
+      const cg = normalized.cogs[cat] ?? 0
+      if (normalized.revenue[cat] == null) normalized.revenue[cat] = 0
+      if (normalized.cogs[cat] == null) normalized.cogs[cat] = 0
+      if (normalized.profit[cat] == null) normalized.profit[cat] = rev - cg
+      if (normalized.margin[cat] == null) normalized.margin[cat] = rev > 0 ? (normalized.profit[cat] / rev) : 0
+    })
+
+    data.categoryAnalysis = normalized
+    return data
+  }
+
   const fetchFinancialData = useCallback(async () => {
     setLoading(true)
     try {
-      const response = await fetch(`/api/reports/financial?range=${selectedRange}`)
+  const response = await apiFetch(`/api/v1/reports/financial?range=${selectedRange}`)
       if (!response.ok) {
         throw new Error('Failed to fetch financial data')
       }
       const data = await response.json()
-      setFinancialData(data)
+      setFinancialData(normalizeFinancialData(data))
     } catch (error) {
       console.error('Error fetching financial data:', error)
       toast({
@@ -152,9 +192,14 @@ export default function FinancialReportPage() {
   const prepareCategoryChartData = () => {
     if (!financialData) return null
 
-    const categories = Object.keys(financialData.categoryAnalysis.revenue)
-    const revenues = Object.values(financialData.categoryAnalysis.revenue)
-    const profits = Object.values(financialData.categoryAnalysis.profit)
+    const ca = financialData.categoryAnalysis || { revenue: {}, cogs: {}, profit: {}, margin: {} }
+    const categories = Array.from(new Set([
+      ...Object.keys(ca.revenue || {}),
+      ...Object.keys(ca.profit || {}),
+      ...Object.keys(ca.cogs || {}),
+    ]))
+    const revenues = categories.map((cat) => (ca.revenue?.[cat] ?? 0))
+    const profits = categories.map((cat) => (ca.profit?.[cat] ?? 0))
 
     // Generate random colors for each category
     const backgroundColors = categories.map(() => {
@@ -213,6 +258,33 @@ export default function FinancialReportPage() {
     }
   }
 
+  // Prepare daily chart data (Net Sales & Operating Profit per day)
+  const prepareDailyChartData = () => {
+    if (!financialData || !Array.isArray(financialData.daily)) return null
+    const labels = financialData.daily.map((d: any) => format(new Date(d.date), 'dd MMM', { locale: id }))
+    const netSales = financialData.daily.map((d: any) => Number(d.netSales || 0))
+    const operatingProfit = financialData.daily.map((d: any) => Number(d.operatingProfit || 0))
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Penjualan Bersih',
+          data: netSales,
+          borderColor: 'rgba(99, 102, 241, 1)',
+          backgroundColor: 'rgba(99, 102, 241, 0.2)',
+          tension: 0.3,
+        },
+        {
+          label: 'Laba Operasional',
+          data: operatingProfit,
+          borderColor: 'rgba(16, 185, 129, 1)',
+          backgroundColor: 'rgba(16, 185, 129, 0.2)',
+          tension: 0.3,
+        },
+      ],
+    }
+  }
+
   return (
     <div>
       <Navbar />
@@ -235,6 +307,9 @@ export default function FinancialReportPage() {
               </Link>
               <Link href="/reports/financial" className="px-4 py-2 rounded-md bg-white shadow-sm font-medium text-gray-800">
                 Keuangan
+              </Link>
+              <Link href="/reports/daily" className="px-4 py-2 rounded-md hover:bg-white hover:shadow-sm font-medium text-gray-600 hover:text-gray-800 transition-all">
+                Harian
               </Link>
             </div>
             
@@ -437,6 +512,26 @@ export default function FinancialReportPage() {
                   <div className="space-y-6">
                     <Card>
                       <CardHeader>
+                        <CardTitle>Laporan Harian Keuangan</CardTitle>
+                        <CardDescription>Penjualan bersih dan laba operasional per hari</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {financialData && Array.isArray(financialData.daily) && financialData.daily.length > 0 ? (
+                          <Line
+                            data={prepareDailyChartData() || { labels: [], datasets: [] }}
+                            options={{
+                              responsive: true,
+                              plugins: { legend: { position: 'top' as const } },
+                              scales: { y: { ticks: { callback: (val) => formatCurrency(Number(val)) } } }
+                            }}
+                          />
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Tidak ada data harian pada periode ini.</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader>
                         <CardTitle>Analisis Kategori</CardTitle>
                         <CardDescription>Pendapatan dan laba berdasarkan kategori produk</CardDescription>
                       </CardHeader>
@@ -486,6 +581,40 @@ export default function FinancialReportPage() {
                   </div>
                 </div>
 
+                {/* Daily Details Table */}
+                {financialData && Array.isArray(financialData.daily) && financialData.daily.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Ringkasan Harian Keuangan</CardTitle>
+                      <CardDescription>Penjualan bersih, biaya operasional, dan laba operasional per hari</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left py-2">Tanggal</th>
+                              <th className="text-right py-2">Penjualan Bersih</th>
+                              <th className="text-right py-2">Biaya Operasional</th>
+                              <th className="text-right py-2">Laba Operasional</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {financialData.daily.map((d: any) => (
+                              <tr key={d.date} className="border-b">
+                                <td className="py-2">{format(new Date(d.date), 'dd MMM yyyy', { locale: id })}</td>
+                                <td className="text-right">{formatCurrency(Number(d.netSales || 0))}</td>
+                                <td className="text-right">{formatCurrency(Number(d.operatingExpenses || 0))}</td>
+                                <td className="text-right">{formatCurrency(Number(d.operatingProfit || 0))}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Category Details Table */}
                 <Card>
                   <CardHeader>
@@ -505,22 +634,31 @@ export default function FinancialReportPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {financialData && Object.keys(financialData.categoryAnalysis.revenue).map((category) => {
-                            const revenue = financialData.categoryAnalysis.revenue[category] || 0
-                            const cogs = financialData.categoryAnalysis.cogs[category] || 0
-                            const profit = financialData.categoryAnalysis.profit[category] || 0
-                            const margin = financialData.categoryAnalysis.margin[category] || 0
+                          {financialData && (() => {
+                            const ca = financialData.categoryAnalysis || { revenue: {}, cogs: {}, profit: {}, margin: {} }
+                            const categories = Array.from(new Set([
+                              ...Object.keys(ca.revenue || {}),
+                              ...Object.keys(ca.cogs || {}),
+                              ...Object.keys(ca.profit || {}),
+                              ...Object.keys(ca.margin || {}),
+                            ]))
+                            return categories.map((category) => {
+                              const revenue = ca.revenue?.[category] ?? 0
+                              const cogs = ca.cogs?.[category] ?? 0
+                              const profit = ca.profit?.[category] ?? (revenue - cogs)
+                              const margin = ca.margin?.[category] ?? (revenue > 0 ? profit / revenue : 0)
                             
-                            return (
-                              <tr key={category} className="border-b">
-                                <td className="py-2">{category}</td>
-                                <td className="text-right">{formatCurrency(revenue)}</td>
-                                <td className="text-right">{formatCurrency(cogs)}</td>
-                                <td className="text-right">{formatCurrency(profit)}</td>
-                                <td className="text-right">{(margin * 100)?.toFixed(2) || '0.00'}%</td>
-                              </tr>
-                            )
-                          })}
+                              return (
+                                <tr key={category} className="border-b">
+                                  <td className="py-2">{category}</td>
+                                  <td className="text-right">{formatCurrency(revenue)}</td>
+                                  <td className="text-right">{formatCurrency(cogs)}</td>
+                                  <td className="text-right">{formatCurrency(profit)}</td>
+                                  <td className="text-right">{(margin * 100)?.toFixed(2) || '0.00'}%</td>
+                                </tr>
+                              )
+                            })
+                          })()}
                         </tbody>
                       </table>
                     </div>

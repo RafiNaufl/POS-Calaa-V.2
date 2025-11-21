@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -16,6 +16,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { toast } from 'react-hot-toast'
 import Navbar from '@/components/Navbar'
+import { apiFetch } from '@/lib/api'
 
 interface WhatsAppStatus {
   isConnected: boolean
@@ -24,7 +25,7 @@ interface WhatsAppStatus {
 }
 
 export default function WhatsAppManagementPage() {
-  const { data: session, status } = useSession()
+  const { user, loading: authLoading } = useAuth()
   const router = useRouter()
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null)
   const [loading, setLoading] = useState(true)
@@ -34,27 +35,27 @@ export default function WhatsAppManagementPage() {
 
   // Check if user is admin
   useEffect(() => {
-    if (status === 'loading') return
+    if (authLoading) return
     
-    if (!session) {
+    if (!user) {
       router.push('/login')
       return
     }
     
-    if (session.user.role !== 'ADMIN') {
+    if (user.role !== 'ADMIN') {
       toast.error('Akses ditolak - Hanya admin yang dapat mengakses halaman ini')
       router.push('/')
       return
     }
-  }, [session, status, router])
+  }, [user, authLoading, router])
 
   // Fetch WhatsApp connection status
   const fetchStatus = async () => {
     try {
-      const response = await fetch('/api/whatsapp/connection')
+      const response = await apiFetch('/api/v1/whatsapp/connection')
       
       if (!response.ok) {
-        const errorData = await response.json()
+        const errorData = await response.json().catch(() => ({}))
         throw new Error(errorData.error || 'Failed to fetch status')
       }
       
@@ -79,12 +80,10 @@ export default function WhatsAppManagementPage() {
   const initializeConnection = async () => {
     setConnecting(true)
     try {
-      const response = await fetch('/api/whatsapp/connection', {
-        method: 'POST',
-      })
+      const response = await apiFetch('/api/v1/whatsapp/connection', { method: 'POST' })
       
       if (!response.ok) {
-        const errorData = await response.json()
+        const errorData = await response.json().catch(() => ({}))
         throw new Error(errorData.error || 'Failed to initialize connection')
       }
       
@@ -106,12 +105,10 @@ export default function WhatsAppManagementPage() {
   const disconnectWhatsApp = async () => {
     setDisconnecting(true)
     try {
-      const response = await fetch('/api/whatsapp/connection', {
-        method: 'DELETE',
-      })
+      const response = await apiFetch('/api/v1/whatsapp/connection', { method: 'DELETE' })
       
       if (!response.ok) {
-        const errorData = await response.json()
+        const errorData = await response.json().catch(() => ({}))
         throw new Error(errorData.error || 'Failed to disconnect')
       }
       
@@ -129,12 +126,10 @@ export default function WhatsAppManagementPage() {
   const logoutWhatsApp = async () => {
     setLoggingOut(true)
     try {
-      const response = await fetch('/api/whatsapp/logout', {
-        method: 'POST',
-      })
+      const response = await apiFetch('/api/v1/whatsapp/logout', { method: 'POST' })
       
       if (!response.ok) {
-        const errorData = await response.json()
+        const errorData = await response.json().catch(() => ({}))
         throw new Error(errorData.error || 'Failed to logout')
       }
       
@@ -152,7 +147,8 @@ export default function WhatsAppManagementPage() {
   const startStatusPolling = () => {
     const interval = setInterval(async () => {
       try {
-        const response = await fetch('/api/whatsapp/connection')
+        // Use the Express v1 endpoint for WhatsApp status polling
+        const response = await apiFetch('/api/v1/whatsapp/connection')
         if (response.ok) {
           const data = await response.json()
           setWhatsappStatus(data)
@@ -173,7 +169,7 @@ export default function WhatsAppManagementPage() {
 
   // Initial status fetch and polling
   useEffect(() => {
-    if (session?.user.role === 'ADMIN') {
+    if (user?.role === 'ADMIN') {
       fetchStatus()
       
       // Set up polling with longer interval to reduce server load
@@ -181,9 +177,9 @@ export default function WhatsAppManagementPage() {
       
       return () => clearInterval(interval)
     }
-  }, [session])
+  }, [user])
 
-  if (status === 'loading' || loading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
@@ -191,7 +187,7 @@ export default function WhatsAppManagementPage() {
     )
   }
 
-  if (!session || session.user.role !== 'ADMIN') {
+  if (!user || user.role !== 'ADMIN') {
     return null
   }
 

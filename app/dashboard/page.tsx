@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '@/hooks/useAuth'
 import Link from 'next/link'
 import useSWR from 'swr'
 import Navbar from '@/components/Navbar'
+import { apiSWRFetcher, apiFetch } from '@/lib/api'
 import {
   ShoppingCartIcon,
   CubeIcon,
@@ -31,7 +32,7 @@ interface DashboardStats {
 }
 
 export default function DashboardPage() {
-  const { data: session } = useSession()
+  const { user, loading: authLoading } = useAuth()
   const [stats, setStats] = useState<DashboardStats>({
     todaySales: 0,
     totalProducts: 0,
@@ -41,27 +42,12 @@ export default function DashboardPage() {
     topProducts: [],
     salesByCategory: [],
   })
-  const [loading, setLoading] = useState(true)
-
-  // Fetcher function for SWR
-  const fetcher = async (url: string) => {
-    const response = await fetch(url, {
-      cache: 'no-store',
-      headers: {
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache'
-      }
-    })
-    if (!response.ok) {
-      throw new Error('Failed to fetch data')
-    }
-    return response.json()
-  }
+  const [statsLoading, setStatsLoading] = useState(true)
 
   // Fetch dashboard stats with SWR for real-time updates
   const { data: dashboardData, error: dashboardError, isLoading: dashboardLoading, mutate } = useSWR(
-    '/api/dashboard/stats', 
-    fetcher, 
+    '/api/v1/dashboard/stats', 
+    apiSWRFetcher, 
     {
       refreshInterval: 2000, // Refresh every 2 seconds untuk data lebih real-time
       revalidateOnFocus: true,
@@ -77,7 +63,7 @@ export default function DashboardPage() {
   
   // Function to manually refresh dashboard data
   const refreshDashboardStats = () => {
-    setLoading(true)
+    setStatsLoading(true)
     mutate() // This triggers a revalidation of the SWR cache
     toast.success('Memperbarui data dashboard...')
   }
@@ -85,15 +71,8 @@ export default function DashboardPage() {
   // Function to reset transaction data
   const resetTransactionData = async () => {
     try {
-      setLoading(true)
-      const response = await fetch('/api/dashboard/reset', {
-        method: 'POST',
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        }
-      })
+      setStatsLoading(true)
+      const response = await apiFetch('/api/v1/dashboard/reset', { method: 'POST' })
       
       if (response.ok) {
         toast.success('Data transaksi berhasil direset')
@@ -104,14 +83,14 @@ export default function DashboardPage() {
           rollbackOnError: false
         })
       } else {
-        const error = await response.json()
-        toast.error(error.message || 'Gagal mereset data transaksi')
+        const error = await response.json().catch(() => ({}))
+        toast.error((error && (error.error || error.message)) || 'Gagal mereset data transaksi')
       }
     } catch (error) {
       console.error('Error resetting transaction data:', error)
       toast.error('Gagal mereset data transaksi')
     } finally {
-      setLoading(false)
+      setStatsLoading(false)
     }
   }
 
@@ -119,13 +98,13 @@ export default function DashboardPage() {
   useEffect(() => {
     if (dashboardData) {
       setStats(dashboardData)
-      setLoading(false)
+      setStatsLoading(false)
     }
   }, [dashboardData])
 
   // Set loading state
   useEffect(() => {
-    setLoading(dashboardLoading)
+    setStatsLoading(dashboardLoading)
   }, [dashboardLoading])
 
   // Handle errors with fallback data
@@ -143,7 +122,7 @@ export default function DashboardPage() {
         topProducts: [],
         salesByCategory: [],
       })
-      setLoading(false)
+      setStatsLoading(false)
     }
   }, [dashboardError])
 
@@ -237,7 +216,7 @@ export default function DashboardPage() {
     }).format(amount)
   }
 
-  if (!session) {
+  if (authLoading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
@@ -245,7 +224,8 @@ export default function DashboardPage() {
     )
   }
 
-  const userRole = session.user.role
+  // Pastikan userRole bertipe string, bukan null, agar aman untuk Array.includes
+  const userRole = user.role ?? 'CASHIER'
   const filteredMenuItems = menuItems.filter(item => 
     item.roles.includes(userRole)
   )
@@ -258,7 +238,7 @@ export default function DashboardPage() {
         {/* Welcome Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">
-            Selamat datang, {session.user.name}!
+            Selamat datang, {user?.name ?? 'Pengguna'}!
           </h1>
           <p className="text-gray-600 mt-2">
             Dashboard POS System - {userRole === 'ADMIN' ? 'Administrator' : 'Kasir'}
@@ -274,13 +254,13 @@ export default function DashboardPage() {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-500">Penjualan Hari Ini</p>
-                <p className="text-2xl font-semibold text-gray-900">
-                  {loading ? (
+                <div className="text-2xl font-semibold text-gray-900">
+                  {statsLoading ? (
                     <div className="animate-pulse bg-gray-200 h-8 w-24 rounded"></div>
                   ) : (
                     formatCurrency(stats.todaySales)
                   )}
-                </p>
+                </div>
               </div>
             </div>
           </div>
@@ -292,13 +272,13 @@ export default function DashboardPage() {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-500">Total Produk</p>
-                <p className="text-2xl font-semibold text-gray-900">
-                  {loading ? (
+                <div className="text-2xl font-semibold text-gray-900">
+                  {statsLoading ? (
                     <div className="animate-pulse bg-gray-200 h-8 w-16 rounded"></div>
                   ) : (
                     stats.totalProducts
                   )}
-                </p>
+                </div>
               </div>
             </div>
           </div>
@@ -310,13 +290,13 @@ export default function DashboardPage() {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-500">Transaksi Hari Ini</p>
-                <p className="text-2xl font-semibold text-gray-900">
-                  {loading ? (
+                <div className="text-2xl font-semibold text-gray-900">
+                  {statsLoading ? (
                     <div className="animate-pulse bg-gray-200 h-8 w-16 rounded"></div>
                   ) : (
                     stats.totalTransactions
                   )}
-                </p>
+                </div>
               </div>
             </div>
           </div>
@@ -330,13 +310,13 @@ export default function DashboardPage() {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-500">Stok Menipis</p>
-                <p className="text-2xl font-semibold text-red-600">
-                  {loading ? (
+                <div className="text-2xl font-semibold text-red-600">
+                  {statsLoading ? (
                     <div className="animate-pulse bg-gray-200 h-8 w-16 rounded"></div>
                   ) : (
                     stats.lowStockItems
                   )}
-                </p>
+                </div>
               </div>
             </div>
           </div>
@@ -348,7 +328,7 @@ export default function DashboardPage() {
             const IconComponent = item.icon
             return (
               <Link
-                key={item.title}
+                key={item.href}
                 href={item.href}
                 className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow duration-200 p-6 group"
               >
@@ -373,7 +353,7 @@ export default function DashboardPage() {
           {/* Recent Transactions */}
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Transaksi Terbaru</h2>
-            {loading ? (
+            {statsLoading ? (
               <div className="space-y-3">
                 {[...Array(3)].map((_, i) => (
                   <div key={i} className="animate-pulse">
@@ -384,8 +364,8 @@ export default function DashboardPage() {
               </div>
             ) : stats.recentTransactions && stats.recentTransactions.length > 0 ? (
               <div className="space-y-3">
-                {stats.recentTransactions.map((transaction: any) => (
-                  <div key={transaction.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                {stats.recentTransactions.map((transaction: any, index: number) => (
+                  <div key={transaction.id ?? `tx-${index}`} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                     <div>
                       <p className="font-medium text-sm">
                         {transaction.member?.name || transaction.customerName || 'GUEST'}
@@ -434,7 +414,7 @@ export default function DashboardPage() {
           {/* Top Products */}
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Produk Terlaris</h2>
-            {loading ? (
+            {statsLoading ? (
               <div className="space-y-3">
                 {[...Array(3)].map((_, i) => (
                   <div key={i} className="animate-pulse">
@@ -446,21 +426,21 @@ export default function DashboardPage() {
             ) : stats.topProducts && stats.topProducts.length > 0 ? (
               <div className="space-y-3">
                 {stats.topProducts.map((item: any, index: number) => (
-                  <div key={item.product?.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                  <div key={item.id ?? `prod-${index}`} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                     <div className="flex items-center">
                       <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mr-3">
                         <span className="text-blue-600 font-semibold text-sm">{index + 1}</span>
                       </div>
                       <div>
-                        <p className="font-medium text-sm">{item.product?.name}</p>
+                        <p className="font-medium text-sm">{item.name}</p>
                         <p className="text-xs text-gray-500">
-                          {formatCurrency(item.product?.price || 0)}
+                          {formatCurrency(item.price || 0)}
                         </p>
                       </div>
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-blue-600">
-                        {item.totalSold} terjual
+                        {item.sold} terjual
                       </p>
                     </div>
                   </div>
@@ -506,9 +486,9 @@ export default function DashboardPage() {
               <button
                 onClick={resetTransactionData}
                 className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center"
-                disabled={loading}
+                disabled={statsLoading}
               >
-                {loading ? (
+                {statsLoading ? (
                   <>
                     <div className="animate-spin h-5 w-5 mr-2 border-t-2 border-white rounded-full" />
                     Memuat...

@@ -5,19 +5,39 @@ export default withAuth(
   function middleware(req) {
     const token = req.nextauth.token
     const { pathname } = req.nextUrl
+    const accessCookie = req.cookies.get('pos.accessToken')?.value
+    
+    // Derive role from NextAuth token or JWT payload in cookie
+    let userRole: string | undefined = token?.role as any
+    if (!userRole && accessCookie) {
+      try {
+        const parts = accessCookie.split('.')
+        if (parts.length === 3) {
+          const payload = JSON.parse(atob(parts[1]))
+          userRole = payload?.role
+        }
+      } catch (_) {}
+    }
 
-    // Allow access to login page
+    // Allow access to login page; if already authenticated, redirect away
     if (pathname === '/login') {
+      if (token || accessCookie) {
+        // Default redirect based on role
+        if (userRole === 'CASHIER') {
+          return NextResponse.redirect(new URL('/cashier', req.url))
+        }
+        return NextResponse.redirect(new URL('/dashboard', req.url))
+      }
       return NextResponse.next()
     }
 
-    // Redirect to login if not authenticated
-    if (!token) {
+    // Redirect to login if not authenticated (accept either NextAuth token or access cookie)
+    if (!token && !accessCookie) {
       return NextResponse.redirect(new URL('/login', req.url))
     }
 
     // Role-based access control
-    const userRole = token.role
+    // userRole determined above
 
     // Admin can access everything
     if (userRole === 'ADMIN') {
@@ -53,8 +73,9 @@ export default withAuth(
         if (req.nextUrl.pathname === '/login') {
           return true
         }
-        // Require token for all other pages
-        return !!token
+        // Allow if NextAuth token or access cookie exists
+        const hasCookie = !!req.cookies.get('pos.accessToken')?.value
+        return !!token || hasCookie
       }
     }
   }

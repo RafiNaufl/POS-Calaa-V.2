@@ -51,7 +51,7 @@ function parseCSV(text: string): { headers: string[]; rows: Record<string, strin
   return { headers, rows }
 }
 
-export default function CSVImportModal({ open, onClose, onImported, importEndpoint = '/api/products/import' }: CSVImportModalProps) {
+export default function CSVImportModal({ open, onClose, onImported, importEndpoint = '/api/v1/products/import' }: CSVImportModalProps) {
   const [file, setFile] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isImporting, setIsImporting] = useState(false)

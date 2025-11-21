@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useEffect, useCallback } from 'react'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import Navbar from '@/components/Navbar'
+import { apiFetch } from '@/lib/api'
 
 interface Voucher {
   id: string
@@ -25,7 +26,7 @@ interface Voucher {
 }
 
 export default function VouchersPage() {
-  const { data: session, status } = useSession()
+  const { user, loading: authLoading } = useAuth()
   const router = useRouter()
   const [vouchers, setVouchers] = useState<Voucher[]>([])
   const [loading, setLoading] = useState(true)
@@ -39,7 +40,7 @@ export default function VouchersPage() {
     code: '',
     name: '',
     description: '',
-    type: 'PERCENTAGE',
+    type: 'percentage',
     value: 0,
     minPurchase: '',
     maxDiscount: '',
@@ -57,10 +58,28 @@ export default function VouchersPage() {
       if (searchName) params.append('name', searchName)
       if (filterActive !== 'all') params.append('active', filterActive)
 
-      const response = await fetch(`/api/vouchers?${params}`)
+      const response = await apiFetch(`/api/v1/vouchers?${params}`)
       if (response.ok) {
         const data = await response.json()
-        setVouchers(data)
+        const raw = Array.isArray(data) ? data : (data.vouchers || [])
+        const normalized: Voucher[] = raw.map((v: any) => ({
+          id: v.id,
+          code: v.code,
+          name: v.name,
+          description: v.description,
+          type: v.type,
+          value: Number(v.value || 0),
+          minPurchase: v.minPurchase != null ? Number(v.minPurchase) : undefined,
+          maxDiscount: v.maxDiscount != null ? Number(v.maxDiscount) : undefined,
+          usageLimit: v.maxUses != null ? Number(v.maxUses) : undefined,
+          usageCount: Number(v.usedCount || 0),
+          perUserLimit: v.maxUsesPerUser != null ? Number(v.maxUsesPerUser) : undefined,
+          startDate: v.startDate,
+          endDate: v.endDate,
+          isActive: Boolean(v.isActive),
+          createdAt: v.createdAt
+        }))
+        setVouchers(normalized)
       }
     } catch (error) {
       console.error('Error fetching vouchers:', error)
@@ -70,17 +89,17 @@ export default function VouchersPage() {
   }, [searchCode, searchName, filterActive])
 
   useEffect(() => {
-    if (status === 'loading') return
-    if (!session) {
+    if (authLoading) return
+    if (!user) {
       router.push('/login')
       return
     }
-    if (session.user.role !== 'ADMIN') {
+    if (user.role !== 'ADMIN') {
       router.push('/dashboard')
       return
     }
     fetchVouchers()
-  }, [session, status, router, fetchVouchers])
+  }, [authLoading, user, router, fetchVouchers])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -111,24 +130,28 @@ export default function VouchersPage() {
         return
       }
 
-      const url = editingVoucher ? `/api/vouchers/${editingVoucher.id}` : '/api/vouchers'
+      const url = editingVoucher ? `/api/v1/vouchers/${editingVoucher.id}` : '/api/v1/vouchers'
       const method = editingVoucher ? 'PUT' : 'POST'
       
-      const response = await fetch(url, {
+      const response = await apiFetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          ...formData,
-          code: formData.code.toUpperCase().trim(),
+          // Map to backend shape: lowercase type, maxUses, omit perUserLimit
+          code: editingVoucher ? undefined : formData.code.toUpperCase().trim(),
           name: formData.name.trim(),
           description: formData.description.trim(),
+          type: (formData.type || '').toString().toLowerCase(),
           value: Number(formData.value),
           minPurchase: formData.minPurchase ? Number(formData.minPurchase) : null,
           maxDiscount: formData.maxDiscount ? Number(formData.maxDiscount) : null,
-          usageLimit: formData.usageLimit ? Number(formData.usageLimit) : null,
-          perUserLimit: formData.perUserLimit ? Number(formData.perUserLimit) : null
+          maxUses: formData.usageLimit ? Number(formData.usageLimit) : null,
+          maxUsesPerUser: formData.perUserLimit ? Number(formData.perUserLimit) : null,
+          startDate: formData.startDate,
+          endDate: formData.endDate,
+          isActive: formData.isActive
         })
       })
 
@@ -152,7 +175,7 @@ export default function VouchersPage() {
       code: '',
       name: '',
       description: '',
-      type: 'PERCENTAGE',
+      type: 'percentage',
       value: 0,
       minPurchase: '',
       maxDiscount: '',
@@ -191,7 +214,7 @@ export default function VouchersPage() {
     }
 
     try {
-      const response = await fetch(`/api/vouchers/${voucher.id}`, {
+      const response = await apiFetch(`/api/v1/vouchers/${voucher.id}`, {
         method: 'DELETE'
       })
 
@@ -224,7 +247,7 @@ export default function VouchersPage() {
     return new Date(dateString).toLocaleDateString('id-ID')
   }
 
-  if (status === 'loading' || loading) {
+  if (authLoading || loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
@@ -362,12 +385,12 @@ export default function VouchersPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
-                        {voucher.type === 'PERCENTAGE' ? 'Persentase' : 
-                         voucher.type === 'FIXED_AMOUNT' ? 'Nominal Tetap' : 'Gratis Ongkir'}
+                        {voucher.type === 'percentage' ? 'Persentase' : 
+                         voucher.type === 'fixed' ? 'Nominal Tetap' : 'Gratis Ongkir'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {voucher.type === 'PERCENTAGE' ? `${voucher.value}%` : formatCurrency(voucher.value)}
+                      {voucher.type === 'percentage' ? `${voucher.value}%` : voucher.type === 'free_shipping' ? 'Gratis Ongkir' : formatCurrency(voucher.value)}
                       {voucher.minPurchase && (
                         <div className="text-xs text-gray-500">
                           Min: {formatCurrency(voucher.minPurchase)}
@@ -493,25 +516,25 @@ export default function VouchersPage() {
                     onChange={(e) => setFormData({ ...formData, type: e.target.value })}
                     className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
-                    <option value="PERCENTAGE">Persentase</option>
-                    <option value="FIXED_AMOUNT">Nominal Tetap</option>
-                    <option value="FREE_SHIPPING">Gratis Ongkir</option>
+                    <option value="percentage">Persentase</option>
+                    <option value="fixed">Nominal Tetap</option>
+                    <option value="free_shipping">Gratis Ongkir</option>
                   </select>
                   <div className="mt-2 p-3 bg-purple-50 rounded-lg text-sm text-purple-700">
-                    {formData.type === 'PERCENTAGE' && (
+                    {formData.type === 'percentage' && (
                       <div>
                         <p className="font-medium">Voucher Persentase</p>
                         <p>Memberikan diskon berdasarkan persentase dari total belanja. Contoh: diskon 10% dari total belanja.</p>
                         <p className="mt-1">Anda dapat mengatur nilai maksimum diskon untuk membatasi jumlah diskon.</p>
                       </div>
                     )}
-                    {formData.type === 'FIXED_AMOUNT' && (
+                    {formData.type === 'fixed' && (
                       <div>
                         <p className="font-medium">Voucher Nominal Tetap</p>
                         <p>Memberikan diskon dengan nilai tetap. Contoh: diskon Rp 50.000 dari total belanja.</p>
                       </div>
                     )}
-                    {formData.type === 'FREE_SHIPPING' && (
+                    {formData.type === 'free_shipping' && (
                       <div>
                         <p className="font-medium">Voucher Gratis Ongkir</p>
                         <p>Menghapus biaya pengiriman dari total belanja.</p>
@@ -521,17 +544,19 @@ export default function VouchersPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Nilai {formData.type === 'PERCENTAGE' ? '(%)' : '(Rp)'} *
+                    Nilai {formData.type === 'percentage' ? '(%)' : '(Rp)'} *
                   </label>
                   <input
                     type="number"
-                    required
+                    required={formData.type !== 'free_shipping'}
                     min="0"
-                    max={formData.type === 'PERCENTAGE' ? "100" : undefined}
+                    step="1"
+                    max={formData.type === 'percentage' ? "100" : undefined}
+                    inputMode="numeric"
                     value={formData.value}
                     onChange={(e) => setFormData({ ...formData, value: Number(e.target.value) })}
                     className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder={formData.type === 'PERCENTAGE' ? '10' : '50000'}
+                    placeholder={formData.type === 'percentage' ? '10' : '50000'}
                   />
                 </div>
               </div>
@@ -544,8 +569,10 @@ export default function VouchersPage() {
                   <input
                     type="number"
                     min="0"
+                    step="1"
+                    inputMode="numeric"
                     value={formData.minPurchase}
-                    onChange={(e) => setFormData({ ...formData, minPurchase: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, minPurchase: Number(e.target.value) })}
                     className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="100000"
                   />
@@ -557,8 +584,10 @@ export default function VouchersPage() {
                   <input
                     type="number"
                     min="0"
+                    step="1"
+                    inputMode="numeric"
                     value={formData.maxDiscount}
-                    onChange={(e) => setFormData({ ...formData, maxDiscount: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, maxDiscount: Number(e.target.value) })}
                     className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="50000"
                   />
@@ -573,8 +602,10 @@ export default function VouchersPage() {
                   <input
                     type="number"
                     min="1"
+                    step="1"
+                    inputMode="numeric"
                     value={formData.usageLimit}
-                    onChange={(e) => setFormData({ ...formData, usageLimit: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, usageLimit: Number(e.target.value) })}
                     className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="100"
                   />
@@ -586,8 +617,10 @@ export default function VouchersPage() {
                   <input
                     type="number"
                     min="1"
+                    step="1"
+                    inputMode="numeric"
                     value={formData.perUserLimit}
-                    onChange={(e) => setFormData({ ...formData, perUserLimit: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, perUserLimit: Number(e.target.value) })}
                     className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="1"
                   />

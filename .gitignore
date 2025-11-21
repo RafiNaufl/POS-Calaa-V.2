@@ -20,6 +20,7 @@ dist/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.production
 
 # Logs
 npm-debug.log*
@@ -104,6 +105,7 @@ ehthumbs.db
 Thumbs.db
 .vercel
 .env*.local
+backend/.env.production
 
 # Local databases and backups
 database/*.db

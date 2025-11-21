@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from 'react'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import { id } from 'date-fns/locale'
@@ -53,6 +53,7 @@ import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { BarChart3, CalendarIcon, DollarSign, Filter, PlusIcon, Pencil, Receipt, Trash2, TrendingUp, Search as SearchIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/use-toast'
+import { apiFetch } from '@/lib/api'
 
 type OperationalExpense = {
   id: string
@@ -72,7 +73,7 @@ type OperationalExpense = {
 }
 
 export default function OperationalExpensesPage() {
-  const { data: session, status } = useSession()
+  const { user, loading: authLoading } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
   
@@ -107,14 +108,16 @@ export default function OperationalExpensesPage() {
   
   // Redirect if not authenticated
   useEffect(() => {
-    if (status === 'unauthenticated') {
+    if (authLoading) return
+    if (!user) {
       router.push('/login')
     }
-  }, [status, router])
+  }, [authLoading, user, router])
   
   // Redirect if not admin
   useEffect(() => {
-    if (session && session.user.role !== 'ADMIN') {
+    if (authLoading) return
+    if (user && user.role !== 'ADMIN') {
       router.push('/dashboard')
       toast({
         title: 'Akses Ditolak',
@@ -122,7 +125,7 @@ export default function OperationalExpensesPage() {
         variant: 'destructive'
       })
     }
-  }, [session, router, toast])
+  }, [authLoading, user, router, toast])
   
   // Fetch expenses
   const fetchExpenses = useCallback(async () => {
@@ -131,12 +134,12 @@ export default function OperationalExpensesPage() {
       const startDateParam = filter.startDate ? format(filter.startDate, 'yyyy-MM-dd') : ''
       const endDateParam = filter.endDate ? format(filter.endDate, 'yyyy-MM-dd') : ''
       
-      let url = `/api/operational-expenses?startDate=${startDateParam}&endDate=${endDateParam}`
+      let url = `/api/v1/operational-expenses?startDate=${startDateParam}&endDate=${endDateParam}`
       if (filter.category && filter.category !== 'ALL') {
         url += `&category=${filter.category}`
       }
       
-      const response = await fetch(url)
+      const response = await apiFetch(url)
       if (!response.ok) {
         throw new Error('Failed to fetch expenses')
       }
@@ -157,12 +160,12 @@ export default function OperationalExpensesPage() {
   
   // Initial fetch
   useEffect(() => {
-    if (session) {
+    if (user) {
       fetchExpenses()
       // Reset to first page when filter changes
       setCurrentPage(1)
     }
-  }, [session, filter, fetchExpenses])
+  }, [user, filter, fetchExpenses])
   
   // Handle form input change
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -320,7 +323,7 @@ export default function OperationalExpensesPage() {
       
       if (currentExpense) {
         // Update existing expense
-        response = await fetch(`/api/operational-expenses/${currentExpense.id}`, {
+        response = await apiFetch(`/api/v1/operational-expenses/${currentExpense.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json'
@@ -329,7 +332,7 @@ export default function OperationalExpensesPage() {
         })
       } else {
         // Create new expense
-        response = await fetch('/api/operational-expenses', {
+        response = await apiFetch('/api/v1/operational-expenses', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -372,7 +375,7 @@ export default function OperationalExpensesPage() {
     setIsSubmitting(true)
     
     try {
-      const response = await fetch(`/api/operational-expenses/${currentExpense.id}`, {
+      const response = await apiFetch(`/api/v1/operational-expenses/${currentExpense.id}`, {
         method: 'DELETE'
       })
       
@@ -417,7 +420,7 @@ export default function OperationalExpensesPage() {
   // Calculate total expenses
   const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0)
   
-  if (status === 'loading' || (session && session.user.role !== 'ADMIN')) {
+  if (authLoading || (user && user.role !== 'ADMIN')) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>

@@ -1,0 +1,40 @@
+name: Env Lint
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  env-check:
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: development
+      # Frontend defaults for CI
+      NEXT_PUBLIC_BACKEND_URL: http://localhost:4000
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ci-dummy-secret
+      # Backend defaults for CI
+      DATABASE_URL: postgresql://user:pass@localhost:5432/ci
+      JWT_SECRET: ci-dummy-jwt
+      MIDTRANS_IS_PRODUCTION: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Frontend env check
+        run: node scripts/check-env-frontend.js
+
+      - name: Backend env check
+        run: node backend/scripts/check-env.js
+

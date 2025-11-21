@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import { useAuth } from '@/hooks/useAuth'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeftIcon,
@@ -16,6 +18,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { toast } from 'react-hot-toast'
 import Navbar from '@/components/Navbar'
+import { apiFetch } from '@/lib/api'
 
 interface User {
   id: string
@@ -36,6 +39,8 @@ interface UserFormData {
 }
 
 export default function UsersPage() {
+  const { user, loading: authLoading } = useAuth()
+  const router = useRouter()
   const [users, setUsers] = useState<User[]>([])
   const [filteredUsers, setFilteredUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
@@ -54,12 +59,26 @@ export default function UsersPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [formErrors, setFormErrors] = useState<Partial<UserFormData>>({})
 
-  // Fetch users from API
+  // Redirect and gating
+  useEffect(() => {
+    if (authLoading) return
+    if (!user) {
+      router.push('/login')
+      return
+    }
+    if (user.role !== 'ADMIN') {
+      router.push('/dashboard')
+      toast.error('Hanya admin yang dapat mengakses halaman ini')
+      return
+    }
+  }, [authLoading, user, router])
+
+  // Fetch users from API (only when authenticated admin)
   useEffect(() => {
     const fetchUsers = async () => {
       setLoading(true)
       try {
-        const response = await fetch('/api/users')
+        const response = await apiFetch('/api/v1/users')
         
         if (!response.ok) {
           const errorData = await response.json()
@@ -67,8 +86,11 @@ export default function UsersPage() {
         }
         
         const data = await response.json()
-        setUsers(data)
-        setFilteredUsers(data)
+        const list = Array.isArray((data as any)?.users) ? (data as any).users : Array.isArray(data) ? data : []
+        // Backward-compat: ensure isActive exists for UI (default true)
+        const normalized = list.map((u: any) => ({ ...u, isActive: u.isActive !== undefined ? u.isActive : true }))
+        setUsers(normalized)
+        setFilteredUsers(normalized)
       } catch (error) {
         console.error('Error fetching users:', error)
         toast.error('Gagal memuat data pengguna')
@@ -77,8 +99,10 @@ export default function UsersPage() {
       }
     }
     
-    fetchUsers()
-  }, [])
+    if (user && user.role === 'ADMIN') {
+      fetchUsers()
+    }
+  }, [user])
 
   // Filter users based on search and filters
   useEffect(() => {
@@ -150,8 +174,8 @@ export default function UsersPage() {
     try {
       if (editingUser) {
         // Update existing user
-        const response = await fetch(`/api/users/${editingUser.id}`, {
-          method: 'PATCH',
+        const response = await apiFetch(`/api/v1/users/${editingUser.id}`, {
+          method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
           },
@@ -160,7 +184,6 @@ export default function UsersPage() {
             email: formData.email,
             password: formData.password.trim() !== '' ? formData.password : undefined,
             role: formData.role,
-            isActive: formData.isActive,
           }),
         })
         
@@ -179,7 +202,7 @@ export default function UsersPage() {
         toast.success('Pengguna berhasil diperbarui')
       } else {
         // Add new user
-        const response = await fetch('/api/users', {
+        const response = await apiFetch('/api/v1/users', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -189,7 +212,6 @@ export default function UsersPage() {
             email: formData.email,
             password: formData.password,
             role: formData.role,
-            isActive: formData.isActive,
           }),
         })
         
@@ -222,7 +244,7 @@ export default function UsersPage() {
       setLoading(true)
       try {
         // Fetch complete user data from API
-        const response = await fetch(`/api/users/${user.id}`)
+        const response = await apiFetch(`/api/v1/users/${user.id}`)
         
         if (!response.ok) {
           const errorData = await response.json()
@@ -273,49 +295,8 @@ export default function UsersPage() {
     setFormErrors({})
   }
 
-  const toggleUserStatus = async (userId: string) => {
-    setLoading(true)
-    try {
-      const user = users.find((u) => u.id === userId)
-      if (!user) throw new Error('User not found')
-      
-      // Determine the new status (opposite of current status)
-      const newStatus = !user.isActive
-      
-      const response = await fetch(`/api/users/${userId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          isActive: newStatus,
-        }),
-      })
-      
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to update user status')
-      }
-      
-      // Get the updated user from the response
-      const updatedUser = await response.json()
-      
-      // Update local state - ensure isActive is explicitly set to the new status
-      // since the API response might not include it
-      const updatedUsers = users.map((u) =>
-        u.id === userId ? { ...u, ...updatedUser, isActive: newStatus } : u
-      )
-      setUsers(updatedUsers)
-      
-      toast.success(
-        `Pengguna ${newStatus ? 'diaktifkan' : 'dinonaktifkan'}`
-      )
-    } catch (error: any) {
-      console.error('Error toggling user status:', error)
-      toast.error(error.message || 'Terjadi kesalahan saat mengubah status pengguna')
-    } finally {
-      setLoading(false)
-    }
+  const toggleUserStatus = async (_userId: string) => {
+    toast.error('Mengubah status aktif belum didukung di backend v1')
   }
 
   const deleteUser = async (userId: string) => {
@@ -326,7 +307,7 @@ export default function UsersPage() {
     setLoading(true)
     
     try {
-      const response = await fetch(`/api/users/${userId}`, {
+      const response = await apiFetch(`/api/v1/users/${userId}`, {
         method: 'DELETE',
       })
       

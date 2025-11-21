@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from 'react'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '@/hooks/useAuth'
 import { useRouter, useParams } from 'next/navigation'
 import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
@@ -22,6 +22,7 @@ import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ArrowLeft, CalendarIcon } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
+import { apiFetch } from '@/lib/api'
 
 type OperationalExpense = {
   id: string
@@ -40,7 +41,7 @@ type OperationalExpense = {
 }
 
 export default function EditOperationalExpensePage() {
-  const { data: session, status } = useSession()
+  const { user, loading: authLoading } = useAuth()
   const router = useRouter()
   const { id: expenseId } = useParams()
   const { toast } = useToast()
@@ -60,14 +61,16 @@ export default function EditOperationalExpensePage() {
   
   // Redirect if not authenticated
   useEffect(() => {
-    if (status === 'unauthenticated') {
+    if (authLoading) return
+    if (!user) {
       router.push('/login')
     }
-  }, [status, router])
+  }, [authLoading, user, router])
   
   // Redirect if not admin
   useEffect(() => {
-    if (session && session.user.role !== 'ADMIN') {
+    if (authLoading) return
+    if (user && user.role !== 'ADMIN') {
       router.push('/dashboard')
       toast({
         title: 'Akses Ditolak',
@@ -75,13 +78,13 @@ export default function EditOperationalExpensePage() {
         variant: 'destructive'
       })
     }
-  }, [session, router, toast])
+  }, [authLoading, user, router, toast])
   
   // Fetch expense details
   const fetchExpenseDetails = useCallback(async () => {
     setIsLoading(true)
     try {
-      const response = await fetch(`/api/operational-expenses/${expenseId}`)
+      const response = await apiFetch(`/api/v1/operational-expenses/${expenseId}`)
       
       if (!response.ok) {
         if (response.status === 404) {
@@ -119,12 +122,12 @@ export default function EditOperationalExpensePage() {
     }
   }, [expenseId, toast, router])
   
-  // Call fetchExpenseDetails when session and expenseId are available
+  // Call fetchExpenseDetails when user and expenseId are available
   useEffect(() => {
-    if (session && expenseId) {
+    if (user && expenseId) {
       fetchExpenseDetails()
     }
-  }, [session, expenseId, fetchExpenseDetails])
+  }, [user, expenseId, fetchExpenseDetails])
   
   // Handle form input change
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -159,7 +162,7 @@ export default function EditOperationalExpensePage() {
         receipt: formData.receipt
       }
       
-      const response = await fetch(`/api/operational-expenses/${expenseId}`, {
+      const response = await apiFetch(`/api/v1/operational-expenses/${expenseId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -190,7 +193,7 @@ export default function EditOperationalExpensePage() {
     }
   }
   
-  if (status === 'loading' || (session && session.user.role !== 'ADMIN')) {
+  if (authLoading || (user && user.role !== 'ADMIN')) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>

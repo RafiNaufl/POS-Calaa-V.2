@@ -1,7 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { useSession, signOut } from "next-auth/react"
+import { signOut } from "next-auth/react"
+import { useAuth } from "@/hooks/useAuth"
+import { logout as customLogout } from "@/lib/auth-client"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -39,19 +41,16 @@ const navigation: NavItem[] = [
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
-  const { data: session } = useSession()
+  const { user } = useAuth()
   const pathname = usePathname()
 
-  if (!session) {
-    return null
-  }
-
-  const userRole = session.user.role
+  const userRole = user?.role ?? 'CASHIER'
   const filteredNavigation = navigation.filter(item => 
     item.roles.includes(userRole)
   )
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    try { await customLogout() } catch (_) {}
     signOut({ callbackUrl: '/login' })
   }
 
@@ -115,7 +114,7 @@ export default function Navbar() {
                 <UserIcon className="w-4 h-4 text-white" />
               </div>
               <div className="flex flex-col min-w-0">
-                <span className="text-sm font-semibold text-gray-900 truncate leading-tight">{session.user.name}</span>
+                <span className="text-sm font-semibold text-gray-900 truncate leading-tight">{user?.name ?? 'Pengguna'}</span>
                 <div className="flex items-center -mt-0.5">
                   <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${
                     userRole === 'ADMIN' 
@@ -193,8 +192,8 @@ export default function Navbar() {
                 <UserIcon className="w-6 h-6 text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-base font-bold text-gray-900 truncate">{session.user.name}</div>
-                <div className="text-sm text-gray-600 truncate">{session.user.email}</div>
+                <div className="text-base font-bold text-gray-900 truncate">{user?.name ?? 'Pengguna'}</div>
+                <div className="text-sm text-gray-600 truncate">{user?.email ?? ''}</div>
                 <div className={`inline-block text-xs font-bold px-2 py-1 rounded-full mt-1 ${
                   userRole === 'ADMIN' 
                     ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white' 
