@@ -333,7 +333,7 @@ export default function VouchersPage() {
       {/* Vouchers List */}
       <div className="bg-white rounded-lg shadow-md overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
+          <table className="min-w-full table-fixed divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -377,9 +377,9 @@ export default function VouchersPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       <div>
-                        <div className="font-medium">{voucher.name}</div>
+                        <div className="text-xs sm:text-sm font-medium text-gray-900 truncate max-w-[180px] sm:max-w-none break-words">{voucher.name}</div>
                         {voucher.description && (
-                          <div className="text-gray-500 text-xs">{voucher.description}</div>
+                          <div className="text-xs sm:text-xs text-gray-500 truncate max-w-[200px] sm:max-w-none break-words">{voucher.description}</div>
                         )}
                       </div>
                     </td>

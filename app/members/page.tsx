@@ -484,7 +484,7 @@ export default function MembersPage() {
             <>
               {viewMode === 'table' ? (
                 <div className="bg-white rounded-lg shadow overflow-hidden">
-                  <table className="min-w-full divide-y divide-gray-200">
+                  <table className="min-w-full table-fixed divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Member</th>
@@ -502,16 +502,16 @@ export default function MembersPage() {
                         <tr key={member.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div>
-                              <div className="text-sm font-medium text-gray-900">{member.name}</div>
+                              <div className="text-xs sm:text-sm font-medium text-gray-900 truncate max-w-[180px] sm:max-w-none break-words">{member.name}</div>
                               {member.lastVisit && (
                                 <div className="text-sm text-gray-500">Terakhir Berkunjung: {formatDate(member.lastVisit)}</div>
                               )}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              {member.phone && <div>{member.phone}</div>}
-                              {member.email && <div className="text-gray-500">{member.email}</div>}
+                            <div className="text-xs sm:text-sm text-gray-900">
+                              {member.phone && <div className="truncate max-w-[180px] sm:max-w-none break-words">{member.phone}</div>}
+                              {member.email && <div className="text-gray-500 truncate max-w-[180px] sm:max-w-none break-words">{member.email}</div>}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">

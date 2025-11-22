@@ -462,7 +462,7 @@ export default function UsersPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+              <table className="min-w-full table-fixed divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -496,10 +496,10 @@ export default function UsersPage() {
                             </div>
                           </div>
                           <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900">
+                            <div className="text-xs sm:text-sm font-medium text-gray-900 truncate max-w-[180px] sm:max-w-none break-words">
                               {user.name}
                             </div>
-                            <div className="text-sm text-gray-500">
+                            <div className="text-xs sm:text-sm text-gray-500 truncate max-w-[180px] sm:max-w-none break-words">
                               {user.email}
                             </div>
                           </div>
