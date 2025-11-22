@@ -66,18 +66,33 @@ router.get('/', authMiddleware, async (req, res) => {
       productWhere.categoryId = isNaN(catIdVal) ? String(req.query.categoryId) : catIdVal
     }
     // Dukungan pencarian nomor transaksi melalui productName: "#123" atau "123"
-    // Tambahan: jika bukan angka, cari juga di transactionNumber
+    // Tambahan: jika bukan angka, cari juga di transactionNumber (case-insensitive lintas dialek)
     if (req.query.productName) {
       const q = String(req.query.productName)
       const m = q.match(/^#?(\d+)$/)
+      const isPostgres = db.sequelize.getDialect && db.sequelize.getDialect() === 'postgres'
+      const qLower = q.toLowerCase()
       if (m) {
         where.id = Number(m[1])
       } else {
-        productWhere.name = { [Op.iLike]: `%${q}%` }
-        where[Op.or] = [
-          ...(Array.isArray(where[Op.or]) ? where[Op.or] : []),
-          { transactionNumber: { [Op.iLike]: `%${q}%` } }
-        ]
+        if (isPostgres) {
+          productWhere.name = { [Op.iLike]: `%${q}%` }
+        } else {
+          productWhere[Op.and] = db.sequelize.where(
+            db.sequelize.fn('LOWER', db.sequelize.col('name')),
+            Op.like,
+            `%${qLower}%`
+          )
+        }
+        const existingOr = Array.isArray(where[Op.or]) ? where[Op.or] : []
+        const txnCond = isPostgres
+          ? { transactionNumber: { [Op.iLike]: `%${q}%` } }
+          : db.sequelize.where(
+              db.sequelize.fn('LOWER', db.sequelize.col('transactionNumber')),
+              Op.like,
+              `%${qLower}%`
+            )
+        where[Op.or] = [...existingOr, txnCond]
       }
     }
     if (req.query.productId) productWhere.id = String(req.query.productId)
