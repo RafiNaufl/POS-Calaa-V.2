@@ -73,10 +73,10 @@ router.get('/', authMiddleware, async (req, res) => {
       if (m) {
         where.id = Number(m[1])
       } else {
-        productWhere.name = { [Op.iLike]: `%${q}%` }
+        productWhere.name = { [Op.like]: `%${q}%` }
         where[Op.or] = [
           ...(Array.isArray(where[Op.or]) ? where[Op.or] : []),
-          { transactionNumber: { [Op.iLike]: `%${q}%` } }
+          { transactionNumber: { [Op.like]: `%${q}%` } }
         ]
       }
     }
