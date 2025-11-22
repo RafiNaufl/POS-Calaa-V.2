@@ -41,7 +41,7 @@ router.get('/', authMiddleware, async (req, res) => {
     const where = { createdAt: { [Op.gte]: startDate, [Op.lte]: endDate } }
     // Validasi nilai filter yang diizinkan untuk keamanan dan konsistensi
     const allowedPayments = ['CASH','CARD','QRIS','MIDTRANS','BANK_TRANSFER','VIRTUAL_ACCOUNT']
-    const allowedStatus = ['PAID','PENDING','CANCELED','COMPLETED']
+    const allowedStatus = ['PAID','PENDING','CANCELED','CANCELLED','COMPLETED','REFUNDED']
     if (req.query.paymentMethod) {
       const pm = String(req.query.paymentMethod).toUpperCase()
       if (!allowedPayments.includes(pm)) return res.status(400).json({ error: 'Invalid payment method' })
@@ -61,8 +61,12 @@ router.get('/', authMiddleware, async (req, res) => {
 
     // Optional server-side filters for product/category
     const productWhere = {}
-    if (req.query.categoryId) productWhere.categoryId = String(req.query.categoryId)
+    if (req.query.categoryId) {
+      const catIdVal = Number(req.query.categoryId)
+      productWhere.categoryId = isNaN(catIdVal) ? String(req.query.categoryId) : catIdVal
+    }
     // Dukungan pencarian nomor transaksi melalui productName: "#123" atau "123"
+    // Tambahan: jika bukan angka, cari juga di transactionNumber
     if (req.query.productName) {
       const q = String(req.query.productName)
       const m = q.match(/^#?(\d+)$/)
@@ -70,6 +74,10 @@ router.get('/', authMiddleware, async (req, res) => {
         where.id = Number(m[1])
       } else {
         productWhere.name = { [Op.iLike]: `%${q}%` }
+        where[Op.or] = [
+          ...(Array.isArray(where[Op.or]) ? where[Op.or] : []),
+          { transactionNumber: { [Op.iLike]: `%${q}%` } }
+        ]
       }
     }
     if (req.query.productId) productWhere.id = String(req.query.productId)
