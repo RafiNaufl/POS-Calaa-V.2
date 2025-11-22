@@ -20,16 +20,58 @@ function computeStartDate(range, endDate) {
 router.get('/', authMiddleware, async (req, res) => {
   try {
     const range = String(req.query.range || '7days')
-    const endDate = new Date(); endDate.setHours(23,59,59,999)
-    const startDate = computeStartDate(range, endDate)
+    // Dukungan rentang tanggal eksplisit (Asia/Jakarta)
+    const fromStr = req.query.from ? String(req.query.from) : null
+    const toStr = req.query.to ? String(req.query.to) : null
+    let startDate
+    let endDate
+    if (fromStr && toStr) {
+      // Jika formatnya YYYY-MM-DD, tambahkan offset +07:00 agar presisi di Jakarta
+      const fromIso = /\d{4}-\d{2}-\d{2}$/.test(fromStr) ? `${fromStr}T00:00:00.000+07:00` : fromStr
+      const toIso = /\d{4}-\d{2}-\d{2}$/.test(toStr) ? `${toStr}T23:59:59.999+07:00` : toStr
+      startDate = new Date(fromIso)
+      endDate = new Date(toIso)
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return res.status(400).json({ error: 'Invalid date range' })
+      }
+    } else {
+      endDate = new Date(); endDate.setHours(23,59,59,999)
+      startDate = computeStartDate(range, endDate)
+    }
     const where = { createdAt: { [Op.gte]: startDate, [Op.lte]: endDate } }
-    if (req.query.paymentMethod) where.paymentMethod = String(req.query.paymentMethod).toUpperCase()
-    if (req.query.status) where.status = String(req.query.status).toUpperCase()
+    // Validasi nilai filter yang diizinkan untuk keamanan dan konsistensi
+    const allowedPayments = ['CASH','CARD','QRIS','MIDTRANS','BANK_TRANSFER','VIRTUAL_ACCOUNT']
+    const allowedStatus = ['PAID','PENDING','CANCELED','COMPLETED']
+    if (req.query.paymentMethod) {
+      const pm = String(req.query.paymentMethod).toUpperCase()
+      if (!allowedPayments.includes(pm)) return res.status(400).json({ error: 'Invalid payment method' })
+      where.paymentMethod = pm
+    }
+    if (req.query.status) {
+      const st = String(req.query.status).toUpperCase()
+      if (!allowedStatus.includes(st)) return res.status(400).json({ error: 'Invalid status' })
+      where.status = st
+    }
+    if (req.query.paymentStatus) {
+      const allowedPaymentStatus = ['PENDING','PAID','FAILED','CANCELLED']
+      const ps = String(req.query.paymentStatus).toUpperCase()
+      if (!allowedPaymentStatus.includes(ps)) return res.status(400).json({ error: 'Invalid payment status' })
+      where.paymentStatus = ps
+    }
 
     // Optional server-side filters for product/category
     const productWhere = {}
     if (req.query.categoryId) productWhere.categoryId = String(req.query.categoryId)
-    if (req.query.productName) productWhere.name = { [Op.iLike]: `%${String(req.query.productName)}%` }
+    // Dukungan pencarian nomor transaksi melalui productName: "#123" atau "123"
+    if (req.query.productName) {
+      const q = String(req.query.productName)
+      const m = q.match(/^#?(\d+)$/)
+      if (m) {
+        where.id = Number(m[1])
+      } else {
+        productWhere.name = { [Op.iLike]: `%${q}%` }
+      }
+    }
     if (req.query.productId) productWhere.id = String(req.query.productId)
 
     const includeItems = {
@@ -55,10 +97,13 @@ router.get('/', authMiddleware, async (req, res) => {
         { model: db.VoucherUsage, as: 'voucherUsages', include: [{ model: db.Voucher, as: 'voucher', attributes: ['code','name'] }] }
       ],
       order: [['createdAt', 'DESC']],
-      limit: 100
+      limit: 1000,
+      distinct: true
     })
     // Aggregasi ringkasan
-    const finalTotals = transactions.map(t => Number(t.finalTotal || t.total || 0))
+    const finalTotals = transactions
+      .filter(t => String(t.status || '').toUpperCase() === 'COMPLETED')
+      .map(t => Number(t.finalTotal || t.total || 0))
     const totalSales = finalTotals.reduce((a,b) => a + b, 0)
     const transactionCount = transactions.length
     const avgTransactionValue = transactionCount > 0 ? Number((totalSales / transactionCount).toFixed(2)) : 0
@@ -486,8 +531,15 @@ router.post('/:id/cancel', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Only completed or pending transactions can be cancelled' })
     }
 
+    const reason = req.body && req.body.reason ? String(req.body.reason) : null
+    const now = new Date()
     await db.sequelize.transaction(async (t) => {
-      await db.Transaction.update({ status: 'CANCELLED', updatedAt: new Date() }, { where: { id }, transaction: t })
+      // Append history to notes and failureReason
+      const notesArr = (() => {
+        try { return Array.isArray(transaction.notes) ? transaction.notes : JSON.parse(transaction.notes || '[]') } catch { return [] }
+      })()
+      notesArr.push({ type: 'CANCELLED', changedAt: now.toISOString(), reason })
+      await db.Transaction.update({ status: 'CANCELLED', failureReason: reason, notes: JSON.stringify(notesArr), updatedAt: now }, { where: { id }, transaction: t })
 
       // Restore product stock only if transaction was completed
       if (transaction.status === 'COMPLETED') {
@@ -561,8 +613,14 @@ router.post('/:id/refund', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Only completed transactions can be refunded' })
     }
 
+    const refundRef = req.body && req.body.refundRef ? String(req.body.refundRef) : `RF-${id}`
+    const now2 = new Date()
     await db.sequelize.transaction(async (t) => {
-      await db.Transaction.update({ status: 'REFUNDED', updatedAt: new Date() }, { where: { id }, transaction: t })
+      const notesArr = (() => {
+        try { return Array.isArray(transaction.notes) ? transaction.notes : JSON.parse(transaction.notes || '[]') } catch { return [] }
+      })()
+      notesArr.push({ type: 'REFUNDED', refundAt: now2.toISOString(), refundAmount: Number(transaction.finalTotal || 0), refundRef })
+      await db.Transaction.update({ status: 'REFUNDED', notes: JSON.stringify(notesArr), updatedAt: now2 }, { where: { id }, transaction: t })
 
       // Restore product stock
       for (const item of transaction.items || []) {

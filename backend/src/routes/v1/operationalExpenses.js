@@ -102,6 +102,19 @@ router.post(
       }
 
       const data = req.body
+      const receipt = data.receipt
+      if (receipt !== undefined && receipt !== null) {
+        const str = String(receipt)
+        const isAbsoluteUrl = /^https?:\/\//.test(str)
+        const isDataUrl = /^data:image\/(png|jpe?g|gif|webp);base64,/.test(str)
+        const isRelativePath = str.startsWith('/') || /^[\w\-.\/]+$/.test(str)
+        if (!isAbsoluteUrl && !isDataUrl && !isRelativePath) {
+          return res.status(400).json({ error: 'Invalid receipt image format' })
+        }
+        if (isDataUrl && str.length > 5_000_000) {
+          return res.status(400).json({ error: 'Receipt image too large' })
+        }
+      }
       const expense = await db.OperationalExpense.create({
         name: data.name,
         amount: parseFloat(String(data.amount)),
@@ -114,6 +127,10 @@ router.post(
 
       res.status(201).json(expense)
     } catch (err) {
+      const name = String(err?.name || '')
+      if (name === 'SequelizeValidationError') {
+        return res.status(400).json({ error: err?.message || 'Validation error' })
+      }
       console.error('[Express] Error creating operational expense:', err)
       res.status(500).json({ error: 'Failed to create operational expense' })
     }
@@ -162,6 +179,19 @@ router.put(
       if (!exists) return res.status(404).json({ error: 'Operational expense not found' })
 
       const data = req.body
+      const receipt = data.receipt
+      if (receipt !== undefined && receipt !== null) {
+        const str = String(receipt)
+        const isAbsoluteUrl = /^https?:\/\//.test(str)
+        const isDataUrl = /^data:image\/(png|jpe?g|gif|webp);base64,/.test(str)
+        const isRelativePath = str.startsWith('/') || /^[\w\-.\/]+$/.test(str)
+        if (!isAbsoluteUrl && !isDataUrl && !isRelativePath) {
+          return res.status(400).json({ error: 'Invalid receipt image format' })
+        }
+        if (isDataUrl && str.length > 5_000_000) {
+          return res.status(400).json({ error: 'Receipt image too large' })
+        }
+      }
       const [count, rows] = await db.OperationalExpense.update({
         name: data.name,
         amount: parseFloat(String(data.amount)),
@@ -174,6 +204,10 @@ router.put(
       if (count < 1) return res.status(500).json({ error: 'Failed to update operational expense' })
       res.json(rows?.[0] || { updated: true })
     } catch (err) {
+      const name = String(err?.name || '')
+      if (name === 'SequelizeValidationError') {
+        return res.status(400).json({ error: err?.message || 'Validation error' })
+      }
       console.error('[Express] Error updating operational expense:', err)
       res.status(500).json({ error: 'Failed to update operational expense' })
     }

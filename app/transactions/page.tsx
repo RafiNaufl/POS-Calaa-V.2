@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import { DateRangePicker } from '@/components/ui/date-range-picker'
 import Link from 'next/link'
 import useSWR from 'swr'
 import {
@@ -57,6 +58,7 @@ export default function TransactionsPage() {
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [paymentFilter, setPaymentFilter] = useState('ALL')
   const [dateFilter, setDateFilter] = useState('ALL')
+  const [customRange, setCustomRange] = useState<{ from: Date | null; to: Date | null }>({ from: null, to: null })
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [showReceiptPreview, setShowReceiptPreview] = useState(false)
@@ -188,47 +190,22 @@ export default function TransactionsPage() {
     }
 
     // Date filter
+    const getJakartaKey = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
     if (dateFilter !== 'ALL') {
-      const today = new Date()
-      today.setHours(0, 0, 0, 0) // Set to beginning of today
-      const filterDate = new Date(today)
-      
-      switch (dateFilter) {
-        case 'TODAY':
-          // Already set to beginning of today
-          break
-        case 'YESTERDAY':
-          filterDate.setDate(today.getDate() - 1)
-          break
-        case 'WEEK':
-          filterDate.setDate(today.getDate() - 7)
-          break
-        case 'MONTH':
-          filterDate.setMonth(today.getMonth() - 1)
-          break
-      }
-      
+      const todayKey = getJakartaKey(new Date())
+      const yesterday = new Date()
+      yesterday.setDate(yesterday.getDate() - 1)
+      const yesterdayKey = getJakartaKey(yesterday)
       filtered = filtered.filter((transaction) => {
-        // Ensure we're working with date objects
-        let transactionDate;
-        if (typeof transaction.date === 'string') {
-          // Handle different date formats
-          if (transaction.date.includes('T')) {
-            // ISO format
-            transactionDate = new Date(transaction.date);
-          } else {
-            // Simple date format (YYYY-MM-DD)
-            const [year, month, day] = transaction.date.split('-').map(Number);
-            transactionDate = new Date(year, month - 1, day);
-          }
-        } else {
-          transactionDate = new Date(transaction.date);
+        const tKey = getJakartaKey(new Date(transaction.date))
+        if (dateFilter === 'TODAY') return tKey === todayKey
+        if (dateFilter === 'YESTERDAY') return tKey === yesterdayKey
+        if (dateFilter === 'CUSTOM' && customRange.from && customRange.to) {
+          const fromKey = getJakartaKey(customRange.from)
+          const toKey = getJakartaKey(customRange.to)
+          return tKey >= fromKey && tKey <= toKey
         }
-        
-        // Set to beginning of the day for fair comparison
-        transactionDate.setHours(0, 0, 0, 0);
-        
-        return transactionDate >= filterDate;
+        return true
       })
     }
 
@@ -505,17 +482,28 @@ export default function TransactionsPage() {
             </select>
 
             {/* Date Filter */}
-            <select
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="ALL">Semua Tanggal</option>
-              <option value="TODAY">Hari Ini</option>
-              <option value="YESTERDAY">Kemarin</option>
-              <option value="WEEK">7 Hari Terakhir</option>
-              <option value="MONTH">30 Hari Terakhir</option>
-            </select>
+            <div className="flex flex-col gap-2">
+              <select
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="ALL">Semua Tanggal</option>
+                <option value="TODAY">Hari Ini</option>
+                <option value="YESTERDAY">Kemarin</option>
+                <option value="CUSTOM">Rentang Khusus</option>
+              </select>
+              {dateFilter === 'CUSTOM' && (
+                <DateRangePicker
+                  dateRange={{ from: customRange.from || new Date(), to: customRange.to || new Date() }}
+                  onDateRangeChange={(range) => {
+                    if (range?.from && range?.to) {
+                      setCustomRange({ from: range.from, to: range.to })
+                    }
+                  }}
+                />
+              )}
+            </div>
 
             {/* Clear Filters */}
             <button
@@ -532,6 +520,13 @@ export default function TransactionsPage() {
           </div>
         </div>
 
+        {/* Active Filter Feedback */}
+        <div className="mb-2 text-sm text-gray-600">
+          {dateFilter === 'TODAY' && 'Filter tanggal: Hari ini'}
+          {dateFilter === 'YESTERDAY' && 'Filter tanggal: Kemarin'}
+          {dateFilter === 'CUSTOM' && customRange.from && customRange.to && `Filter tanggal: ${new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta' }).format(customRange.from)} - ${new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta' }).format(customRange.to)}`}
+          {dateFilter === 'ALL' && 'Filter tanggal: Semua'}
+        </div>
         {/* Transactions Table */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           {loading ? (
@@ -540,7 +535,7 @@ export default function TransactionsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+              <table className="min-w-full table-fixed divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -573,11 +568,11 @@ export default function TransactionsPage() {
                   {filteredTransactions.map((transaction) => (
                     <tr key={transaction.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
+                        <div className="text-xs sm:text-sm font-medium text-gray-900 truncate max-w-[160px] sm:max-w-none">
                           {transaction.id}
                         </div>
                         {transaction.customer && (
-                          <div className="text-sm text-gray-500">
+                          <div className="text-xs sm:text-sm text-gray-500 truncate max-w-[180px] sm:max-w-none break-words">
                             {transaction.customer}
                           </div>
                         )}
@@ -591,12 +586,12 @@ export default function TransactionsPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm text-gray-900">
+                        <div className="text-xs sm:text-sm text-gray-900">
                           {transaction.items.length} item(s)
                         </div>
-                        <div className="text-sm text-gray-500">
+                        <div className="text-xs sm:text-sm text-gray-500 line-clamp-2 break-words">
                           {transaction.items.slice(0, 2).map((item, index) => (
-                            <div key={index}>
+                            <div key={index} className="truncate">
                               {item.name} x{item.quantity}
                             </div>
                           ))}
@@ -627,7 +622,7 @@ export default function TransactionsPage() {
                           </span>
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900 truncate max-w-[160px] sm:max-w-none">
                         {transaction.cashier}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">

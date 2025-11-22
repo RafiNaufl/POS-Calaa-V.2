@@ -61,7 +61,8 @@ function buildApp () {
   }
   app.use(cors(corsOptions))
   app.options('*', cors(corsOptions))
-  app.use(express.json({ limit: '2mb' }))
+  app.use(express.json({ limit: '6mb' }))
+  app.use(express.urlencoded({ extended: true, limit: '6mb' }))
   app.use(requestLogger)
   if (morgan) app.use(morgan('tiny'))
 
