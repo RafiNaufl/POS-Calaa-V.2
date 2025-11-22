@@ -1,7 +1,7 @@
 import makeWASocket, { 
   ConnectionState, 
   DisconnectReason, 
-  useMultiFileAuthState,
+  useMultiFileAuthState as getMultiFileAuthState,
   WASocket,
   proto,
   isJidBroadcast,
@@ -95,7 +95,7 @@ class WhatsAppManager {
       // Add a small delay to ensure socket is properly closed
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      const { state, saveCreds } = await useMultiFileAuthState(this.authDir);
+      const { state, saveCreds } = await getMultiFileAuthState(this.authDir);
       
       // Fetch latest WhatsApp Web version for compatibility
       const { version, isLatest } = await fetchLatestBaileysVersion();

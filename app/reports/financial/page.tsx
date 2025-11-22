@@ -423,7 +423,7 @@ export default function FinancialReportPage() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="overflow-auto">
-                      <table className="w-full">
+                      <table className="w-full table-fixed">
                         <tbody>
                           {/* Revenue Section */}
                           <tr className="font-bold">
@@ -475,7 +475,9 @@ export default function FinancialReportPage() {
                           </tr>
                           {Object.entries(financialData.profitability.operatingExpenses).map(([expense, amount]) => (
                             <tr key={expense}>
-                              <td className="py-1 pl-4">{expense}</td>
+                              <td className="py-1 pl-4">
+                                <div className="text-xs sm:text-sm truncate max-w-[200px] sm:max-w-none break-words">{expense}</div>
+                              </td>
                               <td className="text-right text-red-500">-{formatCurrency(amount as number)}</td>
                             </tr>
                           ))}
@@ -590,7 +592,7 @@ export default function FinancialReportPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="overflow-x-auto">
-                        <table className="w-full">
+                        <table className="w-full table-fixed">
                           <thead>
                             <tr className="border-b">
                               <th className="text-left py-2">Tanggal</th>
@@ -623,7 +625,7 @@ export default function FinancialReportPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="overflow-x-auto">
-                      <table className="w-full">
+                      <table className="w-full table-fixed">
                         <thead>
                           <tr className="border-b">
                             <th className="text-left py-2">Kategori</th>
@@ -650,7 +652,9 @@ export default function FinancialReportPage() {
                             
                               return (
                                 <tr key={category} className="border-b">
-                                  <td className="py-2">{category}</td>
+                                  <td className="py-2">
+                                    <div className="text-xs sm:text-sm truncate max-w-[200px] sm:max-w-none break-words">{category}</div>
+                                  </td>
                                   <td className="text-right">{formatCurrency(revenue)}</td>
                                   <td className="text-right">{formatCurrency(cogs)}</td>
                                   <td className="text-right">{formatCurrency(profit)}</td>
