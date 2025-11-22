@@ -30,7 +30,7 @@ module.exports = (sequelize) => {
       allowNull: true
     },
     receipt: {
-      type: DataTypes.STRING,
+      type: DataTypes.TEXT,
       allowNull: true
     },
     createdBy: {

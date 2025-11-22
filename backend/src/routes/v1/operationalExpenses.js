@@ -8,7 +8,20 @@ const router = Router()
 
 async function ensureOperationalExpenseTable() {
   try {
-    await db.sequelize.getQueryInterface().describeTable('operational_expense')
+    const desc = await db.sequelize.getQueryInterface().describeTable('operational_expense')
+    try {
+      const dialect = db.sequelize.getDialect && db.sequelize.getDialect()
+      const needsAlter = desc && desc.receipt && /char|varying/i.test(String(desc.receipt.type || ''))
+      if (needsAlter && dialect === 'postgres') {
+        await db.sequelize.query('ALTER TABLE "operational_expense" ALTER COLUMN "receipt" TYPE TEXT')
+        console.log('[Express] Altered operational_expense.receipt to TEXT (Postgres)')
+      } else if (needsAlter && dialect === 'mysql') {
+        await db.sequelize.query('ALTER TABLE `operational_expense` MODIFY `receipt` TEXT')
+        console.log('[Express] Altered operational_expense.receipt to TEXT (MySQL)')
+      }
+    } catch (alterErr) {
+      console.warn('[Express] Failed to auto-alter operational_expense.receipt to TEXT:', alterErr)
+    }
   } catch (error) {
     try {
       await db.OperationalExpense.sync()
@@ -168,6 +181,7 @@ router.put(
     }
   }),
   async (req, res) => {
+    await ensureOperationalExpenseTable()
     try {
       const role = req.user?.role
       if (role !== 'ADMIN') {
