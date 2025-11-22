@@ -14,14 +14,14 @@ function buildValidator(rules = {}) {
           errors.push(`${key} is required`)
           continue
         }
-        if (value !== undefined && rule.type) {
+        if (value !== undefined && value !== null && rule.type) {
           const type = rule.type
           const ok = type === 'number' ? !isNaN(Number(value)) : typeof value === type
           if (!ok) {
             errors.push(`${key} must be a ${type}`)
           }
         }
-        if (value !== undefined && rule.enum && Array.isArray(rule.enum)) {
+        if (value !== undefined && value !== null && rule.enum && Array.isArray(rule.enum)) {
           if (!rule.enum.includes(value)) {
             errors.push(`${key} must be one of: ${rule.enum.join(', ')}`)
           }

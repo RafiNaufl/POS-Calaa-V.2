@@ -497,10 +497,10 @@ export default function OperationalExpensesPage() {
                 value={filter.category}
                 onValueChange={(value) => handleFilterCategoryChange(value)}
               >
-                <SelectTrigger>
+                <SelectTrigger className="bg-white border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                   <SelectValue placeholder="Semua Kategori" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bg-white border border-gray-200 shadow-md">
                   <SelectItem value="ALL">Semua Kategori</SelectItem>
                   <SelectItem value="FIXED">Tetap (Fixed)</SelectItem>
                   <SelectItem value="VARIABLE">Variabel (Variable)</SelectItem>
@@ -584,7 +584,7 @@ export default function OperationalExpensesPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <Table>
+                <Table className="table-fixed">
                   <TableCaption>Daftar biaya operasional periode {format(filter.startDate, 'dd MMM yyyy', { locale: id })} - {format(filter.endDate, 'dd MMM yyyy', { locale: id })}</TableCaption>
                   <TableHeader>
                     <TableRow className="bg-muted/30 hover:bg-muted/40">
@@ -601,7 +601,7 @@ export default function OperationalExpensesPage() {
                     {paginatedExpenses.map((expense) => (
                       <TableRow key={expense.id} className="hover:bg-muted/5">
                         <TableCell>{formatDate(expense.date)}</TableCell>
-                        <TableCell className="font-medium">{expense.name}</TableCell>
+                        <TableCell className="font-medium text-xs sm:text-sm truncate max-w-[180px] sm:max-w-none break-words">{expense.name}</TableCell>
                         <TableCell>
                           <span className={cn(
                             "px-2 py-1 rounded-full text-xs font-medium",
@@ -634,7 +634,7 @@ export default function OperationalExpensesPage() {
                             <span className="text-gray-400 text-sm">-</span>
                           )}
                         </TableCell>
-                        <TableCell>{expense.user_name || 'Unknown'}</TableCell>
+                        <TableCell className="text-xs sm:text-sm truncate max-w-[160px] sm:max-w-none">{expense.user_name || 'Unknown'}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end space-x-2">
                             <Button variant="outline" size="icon" onClick={() => openEditDialog(expense)} className="h-8 w-8">

@@ -33,10 +33,6 @@ Tanggal: 29 Juli 2025
 - Prisma Studio dapat mengakses database
 - Semua tabel dan data tersedia
 
-## Akun Demo:
-- **Admin**: admin@pos.com / admin123
-- **Cashier**: kasir@pos.com / kasir123
-
 ## Database Schema:
 - Users, Categories, Products
 - Transactions, TransactionItems

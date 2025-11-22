@@ -169,8 +169,8 @@ export default function CSVImportModal({ open, onClose, onImported, importEndpoi
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-3xl p-0 overflow-hidden">
-        <div className="bg-white">
+      <DialogContent className="sm:max-w-3xl max-h-[85vh] p-0">
+        <div className="bg-white flex flex-col h-full">
           {/* Header */}
           <div className="px-6 pt-6">
             <DialogTitle className="text-lg font-semibold text-gray-900">Import CSV Produk</DialogTitle>
@@ -178,7 +178,7 @@ export default function CSVImportModal({ open, onClose, onImported, importEndpoi
           </div>
 
           {/* Content */}
-          <div className="px-6 py-4 space-y-4">
+          <div className="px-6 py-4 space-y-4 flex-1 overflow-y-auto">
             {/* File Upload */}
             <div>
               <label htmlFor="csv-upload" className="block text-sm font-medium text-gray-700 mb-1">File CSV</label>
@@ -258,7 +258,7 @@ export default function CSVImportModal({ open, onClose, onImported, importEndpoi
           </div>
 
           {/* Footer */}
-          <div className="px-6 pb-6 flex items-center justify-between">
+          <div className="px-6 pb-6 pt-3 border-t flex items-center justify-between bg-white">
             <button onClick={downloadTemplate} className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">Unduh Template</button>
             <div className="flex items-center space-x-2">
               <button onClick={handleClose} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Batal</button>

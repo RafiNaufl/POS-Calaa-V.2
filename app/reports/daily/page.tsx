@@ -15,6 +15,7 @@ import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { formatCurrency } from "@/lib/utils"
 import { apiFetch } from "@/lib/api"
 import { RefreshCw, Download, Search as SearchIcon, CheckCircle, Clock, XCircle, Circle } from "lucide-react"
+import * as XLSX from "xlsx"
 import jsPDF from "jspdf"
 import html2canvas from "html2canvas"
 
@@ -29,6 +30,10 @@ type TransactionItemRow = {
   customerName?: string | null
   paymentMethod: string
   status: string
+  statusChangedAt?: string
+  cancelReason?: string | null
+  refundAmount?: number | null
+  refundRef?: string | null
 }
 
 type DateRange = { from?: Date; to?: Date }
@@ -55,6 +60,11 @@ function formatDateTime(iso: string) {
   }).format(valid)
 }
 
+function jakartaDateISO(d: Date) {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
+  return parts // en-CA yields YYYY-MM-DD
+}
+
 export default function DailySalesDetailPage() {
   const [loading, setLoading] = useState<boolean>(true)
   const [dateRange, setDateRange] = useState<DateRange>({ from: new Date(), to: new Date() })
@@ -71,16 +81,61 @@ export default function DailySalesDetailPage() {
   const [pageSize, setPageSize] = useState<number>(20)
   const tableRef = useRef<HTMLDivElement>(null)
   const [backendSummary, setBackendSummary] = useState<{ totalSales: number; transactionCount: number; avgTransaction: number; topProductName: string } | null>(null)
+  const [validationError, setValidationError] = useState<string>("")
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true)
     try {
+      // Validasi input filter
+      const allowedPayments = ["ALL","CASH","CARD","QRIS","MIDTRANS","BANK_TRANSFER","VIRTUAL_ACCOUNT"]
+      const allowedStatus = ["ALL","PAID","PENDING","CANCELED","CANCELLED","COMPLETED","REFUNDED"]
+      const catIds = new Set(["ALL", ...categoriesList.map((c) => c.id)])
+      const q = search.trim()
+      const from = dateRange?.from
+      const to = dateRange?.to
+      if (!from || !to) {
+        setValidationError("Rentang tanggal wajib diisi")
+        setRows([])
+        return
+      }
+      if (from.getTime() > to.getTime()) {
+        setValidationError("Tanggal awal tidak boleh lebih besar dari tanggal akhir")
+        setRows([])
+        return
+      }
+      if (!catIds.has(selectedCategoryId)) {
+        setValidationError("Kategori tidak valid")
+        setRows([])
+        return
+      }
+      if (!allowedPayments.includes(selectedPayment)) {
+        setValidationError("Metode pembayaran tidak valid")
+        setRows([])
+        return
+      }
+      if (!allowedStatus.includes(selectedStatus)) {
+        setValidationError("Status transaksi tidak valid")
+        setRows([])
+        return
+      }
+      if (q.length > 120) {
+        setValidationError("Kata kunci pencarian terlalu panjang")
+        setRows([])
+        return
+      }
+      setValidationError("")
       const rangeParam = deriveRangeParam(dateRange)
       const params = new URLSearchParams({ range: rangeParam })
+      if (dateRange.from && dateRange.to) {
+        params.set('from', jakartaDateISO(dateRange.from))
+        params.set('to', jakartaDateISO(dateRange.to))
+      }
       if (selectedPayment !== "ALL") params.set("paymentMethod", selectedPayment)
-      if (selectedStatus !== "ALL") params.set("status", selectedStatus)
+      if (selectedStatus !== "ALL") {
+        if (selectedStatus === 'PAID') params.set('paymentStatus', 'PAID')
+        else params.set("status", selectedStatus)
+      }
       if (selectedCategoryId !== "ALL") params.set("categoryId", selectedCategoryId)
-      const q = search.trim()
       if (q) params.set("productName", q)
       const res = await apiFetch(`/api/v1/transactions?${params.toString()}`)
       if (!res.ok) throw new Error("Gagal mengambil data transaksi")
@@ -134,6 +189,13 @@ export default function DailySalesDetailPage() {
   }, [fetchTransactions])
 
   useEffect(() => {
+    const id = setInterval(() => {
+      fetchTransactions()
+    }, 30000)
+    return () => clearInterval(id)
+  }, [fetchTransactions])
+
+  useEffect(() => {
     async function fetchCategories() {
       try {
         const res = await apiFetch(`/api/v1/categories`)
@@ -160,20 +222,33 @@ export default function DailySalesDetailPage() {
         const flatCatName = it?.product?.categoryName
         const catId = it?.product?.categoryId != null ? String(it.product.categoryId) : undefined
         const mappedCatName = relCatName ?? flatCatName ?? (catId ? (categoriesList.find((c) => c.id === catId)?.name ?? "-") : "-")
-        return {
-          transactionId: t?.id != null ? String(t.id) : t?.transactionNumber != null ? String(t.transactionNumber) : "-",
-          dateTime: String(t.createdAt),
-          productName: it?.product?.name ?? "Unknown",
-          categoryName: mappedCatName,
-          quantity: Number(it?.quantity ?? 0),
-          unitPrice: Number(it?.price ?? 0),
-          itemTotal: Number(it?.subtotal ?? (Number(it?.price || 0) * Number(it?.quantity || 0))),
-          customerName: t?.customerName ?? null,
-          paymentMethod: String(t?.paymentMethod || "-").toUpperCase(),
-          status: String(t?.paymentStatus || t?.status || "-").toUpperCase(),
-        }
+          const notes = String(t?.notes || '').trim()
+          let refundRef: string | null = null
+          try {
+            if (notes) {
+              const parsed = JSON.parse(notes)
+              const last = Array.isArray(parsed) ? parsed[parsed.length - 1] : null
+              if (last && last.type === 'REFUNDED' && last.refundRef) refundRef = String(last.refundRef)
+            }
+          } catch {}
+          return {
+            transactionId: t?.id != null ? String(t.id) : t?.transactionNumber != null ? String(t.transactionNumber) : "-",
+            dateTime: String(t.createdAt),
+            productName: it?.product?.name ?? "Unknown",
+            categoryName: mappedCatName,
+            quantity: Number(it?.quantity ?? 0),
+            unitPrice: Number(it?.price ?? 0),
+            itemTotal: Number(it?.subtotal ?? (Number(it?.price || 0) * Number(it?.quantity || 0))),
+            customerName: t?.customerName ?? null,
+            paymentMethod: String(t?.paymentMethod || "-").toUpperCase(),
+            status: String(t?.status || t?.paymentStatus || "-").toUpperCase(),
+            statusChangedAt: String(t?.updatedAt || t?.paidAt || t?.createdAt || ""),
+            cancelReason: t?.failureReason ? String(t.failureReason) : null,
+            refundAmount: String(t?.status || '').toUpperCase() === 'REFUNDED' ? Number(t?.finalTotal || 0) : null,
+            refundRef,
+          }
+        })
       })
-    })
     setRows(flattened)
   }, [categoriesList])
 
@@ -272,7 +347,6 @@ export default function DailySalesDetailPage() {
   }
 
   async function exportExcel() {
-    // Ekspor .xls berbasis HTML agar tidak membutuhkan dependensi tambahan
     const header = [
       "Nomor Transaksi",
       "Tanggal/Waktu",
@@ -285,44 +359,31 @@ export default function DailySalesDetailPage() {
       "Metode Pembayaran",
       "Status",
     ]
-    const rowsHtml = sortedRows
-      .map((r) => `
-        <tr>
-          <td>#${r.transactionId}</td>
-          <td>${formatDateTime(r.dateTime)}</td>
-          <td>${r.productName}</td>
-          <td>${r.categoryName}</td>
-          <td>${r.quantity}</td>
-          <td>${r.unitPrice}</td>
-          <td>${r.itemTotal}</td>
-          <td>${r.customerName || ''}</td>
-          <td>${r.paymentMethod}</td>
-          <td>${r.status}</td>
-        </tr>
-      `)
-      .join("")
-    const html = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-        <head><meta charset="utf-8" /></head>
-        <body>
-          <table border="1">
-            <thead>
-              <tr>${header.map((h) => `<th>${h}</th>`).join("")}</tr>
-            </thead>
-            <tbody>
-              ${rowsHtml}
-            </tbody>
-          </table>
-        </body>
-      </html>
-    `
-    const blob = new Blob([html], { type: "application/vnd.ms-excel" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `laporan-harian-penjualan-${new Date().toISOString().slice(0,10)}.xls`
-    a.click()
-    URL.revokeObjectURL(url)
+    const data = sortedRows.map((r) => [
+      `#${r.transactionId}`,
+      formatDateTime(r.dateTime),
+      r.productName,
+      r.categoryName,
+      r.quantity,
+      r.unitPrice,
+      r.itemTotal,
+      r.customerName || "",
+      r.paymentMethod,
+      r.status,
+    ])
+    const aoa = [header, ...data]
+    const ws = XLSX.utils.aoa_to_sheet(aoa)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "Laporan Harian")
+    wb.Props = {
+      Title: "Laporan Harian Penjualan",
+      Subject: "Ekspor Laporan Harian",
+      Author: "POS App",
+      Company: "POS App",
+      CreatedDate: new Date(),
+    }
+    const filename = `laporan-harian-penjualan-${new Date().toISOString().slice(0,10)}.xlsx`
+    XLSX.writeFile(wb, filename, { compression: true })
   }
 
   async function exportPDF() {
@@ -341,21 +402,24 @@ export default function DailySalesDetailPage() {
   function rowTintClass(status: string) {
     if (status === "PAID" || status === "COMPLETED") return "bg-green-50"
     if (status === "PENDING") return "bg-amber-50"
-    if (status === "CANCELED") return "bg-red-50"
+    if (status === "CANCELED" || status === "CANCELLED") return "bg-red-50"
+    if (status === "REFUNDED") return "bg-blue-50"
     return "bg-gray-50"
   }
 
   function statusClass(status: string) {
     if (status === "PAID" || status === "COMPLETED") return "bg-green-50 text-green-700 border border-green-200"
     if (status === "PENDING") return "bg-amber-50 text-amber-700 border border-amber-200"
-    if (status === "CANCELED") return "bg-red-50 text-red-700 border border-red-200"
+    if (status === "CANCELED" || status === "CANCELLED") return "bg-red-50 text-red-700 border border-red-200"
+    if (status === "REFUNDED") return "bg-blue-50 text-blue-700 border border-blue-200"
     return "bg-gray-50 text-gray-700 border border-gray-200"
   }
 
   function statusIcon(status: string) {
     if (status === "PAID" || status === "COMPLETED") return <CheckCircle className="h-3 w-3 mr-1" />
     if (status === "PENDING") return <Clock className="h-3 w-3 mr-1" />
-    if (status === "CANCELED") return <XCircle className="h-3 w-3 mr-1" />
+    if (status === "CANCELED" || status === "CANCELLED") return <XCircle className="h-3 w-3 mr-1" />
+    if (status === "REFUNDED") return <Circle className="h-3 w-3 mr-1" />
     return <Circle className="h-3 w-3 mr-1" />
   }
 
@@ -410,13 +474,13 @@ export default function DailySalesDetailPage() {
               <div>
                 <Label>Kategori Produk</Label>
                 <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-white border border-gray-300 text-gray-900 focus:ring-2 focus:ring-gray-300">
                     <SelectValue placeholder="Semua Kategori" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-white text-gray-900 border border-gray-200">
                     <SelectItem value="ALL">Semua Kategori</SelectItem>
                     {categoriesList.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      <SelectItem key={c.id} value={c.id} className="hover:bg-gray-50">{c.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -424,32 +488,34 @@ export default function DailySalesDetailPage() {
               <div>
                 <Label>Metode Pembayaran</Label>
                 <Select value={selectedPayment} onValueChange={setSelectedPayment}>
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-white border border-gray-300 text-gray-900 focus:ring-2 focus:ring-gray-300">
                     <SelectValue placeholder="Semua Metode" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-white text-gray-900 border border-gray-200">
                     <SelectItem value="ALL">Semua Metode</SelectItem>
-                    <SelectItem value="CASH">CASH</SelectItem>
-                    <SelectItem value="CARD">CARD</SelectItem>
-                    <SelectItem value="QRIS">QRIS</SelectItem>
-                    <SelectItem value="MIDTRANS">MIDTRANS</SelectItem>
-                    <SelectItem value="BANK_TRANSFER">BANK_TRANSFER</SelectItem>
-                    <SelectItem value="VIRTUAL_ACCOUNT">VIRTUAL_ACCOUNT</SelectItem>
+                    <SelectItem value="CASH" className="hover:bg-gray-50">CASH</SelectItem>
+                    <SelectItem value="CARD" className="hover:bg-gray-50">CARD</SelectItem>
+                    <SelectItem value="QRIS" className="hover:bg-gray-50">QRIS</SelectItem>
+                    <SelectItem value="MIDTRANS" className="hover:bg-gray-50">MIDTRANS</SelectItem>
+                    <SelectItem value="BANK_TRANSFER" className="hover:bg-gray-50">BANK_TRANSFER</SelectItem>
+                    <SelectItem value="VIRTUAL_ACCOUNT" className="hover:bg-gray-50">VIRTUAL_ACCOUNT</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div>
                 <Label>Status Transaksi</Label>
                 <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-white border border-gray-300 text-gray-900 focus:ring-2 focus:ring-gray-300">
                     <SelectValue placeholder="Semua Status" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-white text-gray-900 border border-gray-200">
                     <SelectItem value="ALL">Semua Status</SelectItem>
-                    <SelectItem value="PAID">PAID</SelectItem>
-                    <SelectItem value="PENDING">PENDING</SelectItem>
-                    <SelectItem value="CANCELED">CANCELED</SelectItem>
-                    <SelectItem value="COMPLETED">COMPLETED</SelectItem>
+                    <SelectItem value="PENDING" className="hover:bg-gray-50">PENDING</SelectItem>
+                    <SelectItem value="PAID" className="hover:bg-gray-50">PAID</SelectItem>
+                    <SelectItem value="CANCELED" className="hover:bg-gray-50">CANCELED</SelectItem>
+                    <SelectItem value="CANCELLED" className="hover:bg-gray-50">CANCELLED</SelectItem>
+                    <SelectItem value="COMPLETED" className="hover:bg-gray-50">COMPLETED</SelectItem>
+                    <SelectItem value="REFUNDED" className="hover:bg-gray-50">REFUNDED</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -465,6 +531,25 @@ export default function DailySalesDetailPage() {
                   />
                 </div>
               </div>
+            </div>
+            <div className="mt-4 flex items-center gap-2">
+              <Button variant="outline" onClick={() => {
+                setDateRange({ from: new Date(), to: new Date() })
+                setSelectedCategoryId("ALL")
+                setSelectedPayment("ALL")
+                setSelectedStatus("ALL")
+                setSearch("")
+                setPage(1)
+              }} className="bg-white">
+                Reset Filter
+              </Button>
+              {validationError ? (
+                <span className="text-sm text-red-600">{validationError}</span>
+              ) : (
+                <span className="text-sm text-gray-600">
+                  Filter aktif: {dateRange.from && dateRange.to ? `${new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta" }).format(dateRange.from)} - ${new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta" }).format(dateRange.to)}` : "-"}, Kategori: {selectedCategoryId === "ALL" ? "Semua" : (categoriesList.find((c) => c.id === selectedCategoryId)?.name || selectedCategoryId)}, Pembayaran: {selectedPayment}, Status: {selectedStatus}
+                </span>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -503,7 +588,7 @@ export default function DailySalesDetailPage() {
             <Download className="h-4 w-4 mr-2" /> Ekspor CSV
           </Button>
           <Button onClick={exportExcel} variant="outline" className="bg-white">
-            <Download className="h-4 w-4 mr-2" /> Ekspor Excel (.xls)
+            <Download className="h-4 w-4 mr-2" /> Ekspor Excel (.xlsx)
           </Button>
           <Button onClick={exportPDF} variant="outline" className="bg-white">
             <Download className="h-4 w-4 mr-2" /> Ekspor PDF
@@ -524,7 +609,7 @@ export default function DailySalesDetailPage() {
               </div>
             ) : (
               <div className="overflow-x-auto" ref={tableRef}>
-                <table className="min-w-full divide-y divide-gray-200">
+                <table className="min-w-full table-fixed divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => toggleSort("transactionId")}>Nomor Transaksi</th>
@@ -549,16 +634,30 @@ export default function DailySalesDetailPage() {
                         <tr key={`${r.transactionId}-${idx}`} className={`${rowTintClass(r.status)} hover:bg-muted/20`}>
                           <td className="px-4 py-2 text-sm text-gray-900">#{r.transactionId}</td>
                           <td className="px-4 py-2 text-sm text-gray-700">{formatDateTime(r.dateTime)}</td>
-                          <td className="px-4 py-2 text-sm text-gray-700">{r.productName}</td>
-                          <td className="px-4 py-2 text-sm text-gray-700">{r.categoryName}</td>
+                          <td className="px-4 py-2 text-xs sm:text-sm text-gray-700 truncate max-w-[160px] sm:max-w-none">{r.productName}</td>
+                          <td className="px-4 py-2 text-xs sm:text-sm text-gray-700 truncate max-w-[140px] sm:max-w-none">{r.categoryName}</td>
                           <td className="px-4 py-2 text-sm text-right text-gray-700">{r.quantity}</td>
                           <td className="px-4 py-2 text-sm text-right text-gray-700">{formatCurrency(r.unitPrice)}</td>
                           <td className="px-4 py-2 text-sm text-right font-medium">{formatCurrency(r.itemTotal)}</td>
-                          <td className="px-4 py-2 text-sm text-gray-700">{r.customerName || "-"}</td>
-                          <td className="px-4 py-2 text-sm text-gray-700">{r.paymentMethod}</td>
-                          <td className={`px-4 py-2 text-xs font-semibold rounded flex items-center ${statusClass(r.status)} w-fit`}>
-                            {statusIcon(r.status)}
-                            {r.status}
+                          <td className="px-4 py-2 text-xs sm:text-sm text-gray-700 truncate max-w-[160px] sm:max-w-none break-words">{r.customerName || "-"}</td>
+                          <td className="px-4 py-2 text-xs sm:text-sm text-gray-700 whitespace-nowrap">{r.paymentMethod}</td>
+                          <td className={`px-4 py-2 text-xs font-semibold rounded ${statusClass(r.status)} w-fit`}> 
+                            <div className="flex items-center">
+                              {statusIcon(r.status)}
+                              {r.status}
+                            </div>
+                            {r.statusChangedAt ? (
+                              <div className="text-[10px] text-gray-600 mt-1">{formatDateTime(r.statusChangedAt)}</div>
+                            ) : null}
+                            {r.cancelReason && (r.status === 'CANCELED' || r.status === 'CANCELLED') ? (
+                              <div className="text-[10px] text-red-700 mt-1">{r.cancelReason}</div>
+                            ) : null}
+                            {r.status === 'REFUNDED' ? (
+                              <div className="text-[10px] text-blue-700 mt-1">
+                                {r.refundAmount != null ? `Refund: ${formatCurrency(r.refundAmount)}` : ''}
+                                {r.refundRef ? ` • Ref: ${r.refundRef}` : ''}
+                              </div>
+                            ) : null}
                           </td>
                         </tr>
                       ))

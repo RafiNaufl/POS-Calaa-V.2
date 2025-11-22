@@ -317,7 +317,7 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phoneNumber: '082219738457',
+          phoneNumber: '087871522399',
           report: closureReport,
         })
       })
@@ -2055,7 +2055,7 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                   cart.map(item => (
                     <div key={item.id} className="flex items-start justify-between p-4 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 mb-3">
                       <div className="flex-1">
-                        <h4 className="font-semibold text-sm text-gray-900 mb-1">{item.name}</h4>
+                        <h4 className="font-semibold text-sm text-gray-900 mb-1 line-clamp-2 break-words">{item.name}</h4>
                         <div className="flex flex-wrap gap-2 mb-2">
                           {item.productCode && (
                             <span className="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-md">
@@ -2382,7 +2382,7 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                       <tbody className="bg-white divide-y divide-gray-200">
                         {completedTransaction.items.map((item: CartItem) => (
                           <tr key={item.id}>
-                            <td className="px-4 py-2 text-sm text-gray-900">
+                            <td className="px-4 py-2 text-sm text-gray-900 line-clamp-2 break-words">
                               {item.name}
                               {item.productCode && (
                                 <div className="text-xs text-gray-500">Kode: {item.productCode}</div>
