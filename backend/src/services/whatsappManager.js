@@ -77,9 +77,13 @@ class WhatsAppManager {
           const code = (lastDisconnect && lastDisconnect.error && lastDisconnect.error.output && lastDisconnect.error.output.statusCode) || null
           this.service.isConnected = false
           this.isInitializing = false
-          if (code === DisconnectReason.loggedOut || code === 401) {
+          const payloadMsg = (lastDisconnect && lastDisconnect.error && lastDisconnect.error.output && lastDisconnect.error.output.payload && lastDisconnect.error.output.payload.message) || ''
+          const shouldWipe = code === DisconnectReason.loggedOut || code === 401 || code === 405 || String(payloadMsg).includes('Connection Failure')
+          if (shouldWipe) {
             await this.resetAuthState().catch(() => {})
-            this.reconnectTimeout = setTimeout(() => this.initialize().catch(() => {}), 1000)
+            if (!this.reconnectTimeout) {
+              this.reconnectTimeout = setTimeout(() => this.initialize().catch(() => {}), 1000)
+            }
           }
         } else if (connection === 'open') {
           this.service.isConnected = true
@@ -99,11 +103,11 @@ class WhatsAppManager {
   async resetAuthState() {
     try {
       if (fs.existsSync(this.authDir)) {
-        const entries = fs.readdirSync(this.authDir)
-        for (const f of entries) {
-          try { fs.rmSync(path.join(this.authDir, f), { recursive: true, force: true }) } catch {}
-        }
+        try { fs.rmSync(this.authDir, { recursive: true, force: true }) } catch {}
       }
+      this.service.qrCode = null
+      this.service.isConnected = false
+      this.ensureAuthDir()
     } catch (e) {
       console.warn('[WhatsApp] resetAuthState error:', e)
     }
@@ -144,6 +148,10 @@ class WhatsAppManager {
 
   async disconnect() {
     try {
+      if (this.reconnectTimeout) {
+        clearTimeout(this.reconnectTimeout)
+        this.reconnectTimeout = null
+      }
       if (this.service.socket) {
         this.service.socket.end(undefined)
         if (this.service.socket.ws && this.service.socket.ws.terminate) {
