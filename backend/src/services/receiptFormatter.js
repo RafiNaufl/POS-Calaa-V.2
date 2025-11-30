@@ -65,10 +65,9 @@ function toNumber(value) {
 }
 
 function formatReceiptForWhatsApp(transaction) {
-  let receipt = `🙏 *Terima kasih telah berbelanja di Wear Calaa!*\n`
-  receipt += `✨ Fashion berkualitas untuk gaya hidup Anda\n\n`
+  let receipt = `*Terima kasih telah berbelanja di Wear Calaa!*\n`
 
-  receipt += `📋 *DETAIL TRANSAKSI*\n`
+  receipt += `✅ *DETAIL TRANSAKSI*\n`
   receipt += ` - No. Transaksi: *${transaction.id}*\n`
   receipt += ` - Tanggal: ${formatDate(transaction.createdAt)}\n`
   receipt += ` - Kasir: ${transaction.user?.name || transaction.cashier || 'Admin'}\n`
@@ -87,19 +86,19 @@ function formatReceiptForWhatsApp(transaction) {
   }
   receipt += `\n`
 
-  receipt += `🛍️ *DETAIL PESANAN*\n`;
+  receipt += `✅ *DETAIL PESANAN*\n`;
   (transaction.items || []).forEach((item, index) => {
     receipt += `${index + 1}. *${item.name}*\n`
-    if (item.productCode) receipt += `   📦 Kode: ${item.productCode}\n`
-    if (item.size) receipt += `   📏 Ukuran: ${item.size}\n`
-    if (item.color) receipt += `   🎨 Warna: ${item.color}\n`
+    if (item.productCode) receipt += `    Kode: ${item.productCode}\n`
+    if (item.size) receipt += `    Ukuran: ${item.size}\n`
+    if (item.color) receipt += `    Warna: ${item.color}\n`
     const itemPrice = toNumber(item.price)
     const itemTotal = toNumber(item.total)
     const qty = toNumber(item.quantity)
-    receipt += `   🛒 Jumlah: ${qty} × ${formatCurrency(itemPrice)} = *${formatCurrency(itemTotal)}*\n\n`
+    receipt += `    Jumlah: ${qty} × ${formatCurrency(itemPrice)} = *${formatCurrency(itemTotal)}*\n\n`
   })
 
-  receipt += `💰 *RINCIAN PEMBAYARAN*\n`
+  receipt += `✅ *RINCIAN PEMBAYARAN*\n`
   const subtotal = toNumber(transaction.subtotal)
   receipt += `Subtotal: ${formatCurrency(subtotal)}\n`
   const tax = toNumber(transaction.tax)
@@ -108,38 +107,35 @@ function formatReceiptForWhatsApp(transaction) {
   const pointsUsed = toNumber(transaction.pointsUsed)
   if (pointsUsed > 0) {
     const pointDiscount = pointsUsed * 1000
-    receipt += `🎯 Diskon Poin (${pointsUsed} poin): -${formatCurrency(pointDiscount)}\n`
+    receipt += `Diskon Poin (${pointsUsed} poin): -${formatCurrency(pointDiscount)}\n`
   }
 
   const voucherDiscount = toNumber(transaction.voucherDiscount)
   if (voucherDiscount > 0) {
-    const label = transaction.voucherCode ? `🎟️ Diskon Voucher (${transaction.voucherCode})` : '🎟️ Diskon Voucher'
+    const label = transaction.voucherCode ? `Diskon Voucher (${transaction.voucherCode})` : '🎟️ Diskon Voucher'
     receipt += `${label}: -${formatCurrency(voucherDiscount)}\n`
   }
 
   const promotionDiscount = toNumber(transaction.promotionDiscount)
   if (promotionDiscount > 0) {
-    receipt += `🎉 Diskon Promosi: -${formatCurrency(promotionDiscount)}\n`
+    receipt += `Diskon Promosi: -${formatCurrency(promotionDiscount)}\n`
   }
 
   const finalTotal = toNumber(transaction.finalTotal)
-  receipt += `\n💳 *TOTAL PEMBAYARAN: ${formatCurrency(finalTotal)}*\n`
+  receipt += `\n *TOTAL PEMBAYARAN: ${formatCurrency(finalTotal)}*\n`
 
-  receipt += `💸 Metode Pembayaran: ${getPaymentMethodLabel(transaction.paymentMethod)}\n`
-  receipt += `📊 Status: ${getStatusLabel(transaction.status)}\n`
+  receipt += `Metode Pembayaran: ${getPaymentMethodLabel(transaction.paymentMethod)}\n`
+  receipt += `Status: ${getStatusLabel(transaction.status)}\n`
 
   const pointsEarned = toNumber(transaction.pointsEarned)
-  if (pointsEarned > 0) receipt += `⭐ Poin Diperoleh: +${pointsEarned} poin\n`
+  if (pointsEarned > 0) receipt += `Poin Diperoleh: +${pointsEarned} poin\n`
 
   receipt += `\n👕 *WEAR CALAA*\n`
   receipt += `📍 Jl. KH. M. Sadeli, Karangasem\n`
   receipt += `   Kec. Cibeber, Kota Cilegon\n`
   receipt += `   Banten 42426\n`
   receipt += `📞 0821-1382-3194\n`
-  receipt += `\n🔄 *Kebijakan Penukaran & Pengembalian*\n`
-  receipt += `- Penukaran max 3 hari dari tanggal pembelian\n`
-  receipt += `- Syarat penukaran: tag original, tidak dicuci, tidak kotor, tidak rusak\n`
-  receipt += `- Pengembalian hanya dalam bentuk voucher belanja\n`
+  receipt += `📱 Instagram/TikTok @wear.calaa\n`
 
   receipt += `\n🙏 Terima kasih! Sampai jumpa di Wear Calaa!`
   return receipt
