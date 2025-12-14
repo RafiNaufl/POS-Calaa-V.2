@@ -2,7 +2,7 @@ services:
   - type: web
     name: pos-backend
     runtime: node
-    plan: standard
+    plan: free
     region: oregon
     branch: deploy-vercel-railway-setup
     buildCommand: npm install
@@ -33,10 +33,6 @@ services:
         sync: false
       - key: WHATSAPP_SESSION_DIR
         value: /opt/render/wa-session
-    disk:
-      name: wa-session
-      mountPath: /opt/render/wa-session
-      sizeGB: 1
 
 databases:
   - name: pos-db
