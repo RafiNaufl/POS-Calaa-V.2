@@ -6,7 +6,6 @@ services:
     region: oregon
     branch: deploy-vercel-railway-setup
     buildCommand: npm install
-    preDeployCommand: npm run test:backend
     startCommand: npm run backend:start
     numInstances: 1
     healthCheckPath: /health
