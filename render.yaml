@@ -16,7 +16,11 @@ services:
       - key: LOG_LEVEL
         value: info
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: pos-db
+          property: connectionString
+      - key: PGSSL
+        value: true
       - key: JWT_SECRET
         generateValue: true
       - key: CORS_ORIGIN
@@ -33,3 +37,8 @@ services:
       name: wa-session
       mountPath: /opt/render/wa-session
       sizeGB: 1
+
+databases:
+  - name: pos-db
+    plan: standard
+    region: oregon
