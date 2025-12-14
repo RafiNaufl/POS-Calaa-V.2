@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: pos-backend
+    runtime: node
+    plan: standard
+    region: oregon
+    branch: main
+    buildCommand: npm install
+    preDeployCommand: npm run test:backend
+    startCommand: npm run backend:start
+    numInstances: 1
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        sync: false
+      - key: MIDTRANS_IS_PRODUCTION
+        value: false
+      - key: MIDTRANS_SERVER_KEY
+        sync: false
+      - key: MIDTRANS_MERCHANT_ID
+        sync: false
+      - key: WHATSAPP_SESSION_DIR
+        value: /opt/render/wa-session
+    disk:
+      name: wa-session
+      mountPath: /opt/render/wa-session
+      sizeGB: 1
