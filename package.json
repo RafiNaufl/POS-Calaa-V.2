@@ -13,7 +13,8 @@
     "schedule-updates": "node scripts/schedule-auto-update.js",
     "test:backend": "jest --config backend/jest.config.js",
     "backend:start": "NODE_ENV=production node backend/scripts/check-env.js && NODE_ENV=production node backend/src/server.js",
-    "backend:dev": "NODE_ENV=development BACKEND_PORT=4000 node backend/scripts/check-env.js && NODE_ENV=development BACKEND_PORT=4000 node backend/src/server.js"
+    "backend:dev": "NODE_ENV=development BACKEND_PORT=4000 node backend/scripts/check-env.js && NODE_ENV=development BACKEND_PORT=4000 node backend/src/server.js",
+    "smoke:backend": "node backend/scripts/smoke.js"
   },
   "dependencies": {
     "@headlessui/react": "^1.7.17",
