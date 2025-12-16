@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from 'react'
+import { apiFetch } from '@/lib/api'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import toast from 'react-hot-toast'
 
@@ -119,12 +120,12 @@ export default function CSVImportModal({ open, onClose, onImported, importEndpoi
     }
     try {
       setIsImporting(true)
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('duplicateStrategy', duplicateStrategy)
-      formData.append('autoCreateCategory', String(autoCreateCategory))
-
-      const res = await fetch(importEndpoint, { method: 'POST', body: formData })
+      const text = await file.text()
+      const res = await apiFetch(importEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csvText: text, duplicateStrategy, autoCreateCategory })
+      })
       const data = await res.json()
       if (!res.ok) {
         throw new Error(data?.error || 'Gagal mengimpor CSV')
