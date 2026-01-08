@@ -202,4 +202,19 @@ router.post('/auth/bootstrap-dev', async (req, res) => {
   }
 })
 
+// --- Feature Routes ---
+router.use('/categories', require('./categories'))
+router.use('/products', require('./products'))
+router.use('/dashboard', require('./dashboard'))
+router.use('/users', require('./users'))
+router.use('/transactions', require('./transactions'))
+router.use('/payments', require('./payments'))
+router.use('/reports', require('./reports'))
+router.use('/cashier-shifts', require('./cashierShifts'))
+router.use('/members', require('./members'))
+router.use('/promotions', require('./promotions'))
+router.use('/vouchers', require('./vouchers'))
+router.use('/operational-expenses', require('./operationalExpenses'))
+router.use('/whatsapp', require('./whatsapp'))
+
 module.exports = router
