@@ -37,7 +37,7 @@ module.exports = (sequelize) => {
       },
     },
     image: {
-      type: DataTypes.STRING,
+      type: DataTypes.TEXT,
       allowNull: true,
       validate: {
         // Accept absolute URLs, relative paths (including /uploads/...), or data URIs

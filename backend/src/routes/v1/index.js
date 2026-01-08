@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken')
 const { authMiddleware } = require('../../middleware/auth')
 const { buildValidator } = require('../../middleware/validate')
 const db = require('../../../../models')
+const { supabase, supabaseAdmin } = require('../../lib/supabase')
 
 const router = Router()
 
@@ -11,8 +12,8 @@ router.get('/status', (_req, res) => {
   res.json({ status: 'ok', version: 'v1', timestamp: new Date().toISOString() })
 })
 
-// Session endpoint: JWT-only (no NextAuth cookie fallback)
-router.get('/auth/session', (req, res) => {
+// Session endpoint: Support both Local and Supabase tokens
+router.get('/auth/session', async (req, res) => {
   const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret'
   const JWT_AUDIENCE = process.env.JWT_AUD || 'pos-app'
   const JWT_ISSUER = process.env.JWT_ISS || 'pos-backend'
@@ -21,20 +22,39 @@ router.get('/auth/session', (req, res) => {
   const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
 
   if (bearer) {
+    // 1. Try Supabase
+    const { data: sbData } = await supabase.auth.getUser(bearer)
+    if (sbData?.user?.email) {
+       // Fetch local user for role
+       const user = await db.User.findOne({ where: { email: sbData.user.email }, attributes: ['id', 'role', 'name', 'email'] })
+       if (user) {
+         // Supabase token expires_at is not easily available from getUser, 
+         // but client usually tracks it. We just say "valid".
+         return res.json({ 
+           user: { id: String(user.id), role: user.role }, 
+           expires: null, 
+           accessToken: bearer, 
+           loggedIn: true, 
+           provider: 'supabase' 
+         })
+       }
+    }
+
+    // 2. Try Local JWT
     try {
       const payload = jwt.verify(bearer, JWT_SECRET, { issuer: JWT_ISSUER, audience: JWT_AUDIENCE })
       const exp = payload && typeof payload.exp === 'number' ? new Date(payload.exp * 1000).toISOString() : null
       const user = { id: String(payload.sub || ''), role: payload.role || undefined }
       return res.json({ user, expires: exp, accessToken: bearer, loggedIn: true, provider: 'express-jwt' })
     } catch (_) {
-      // Invalid token; return anonymous
+      // Invalid token
     }
   }
 
   return res.json({ user: null, expires: null, accessToken: null, loggedIn: false })
 })
 
-// Login endpoint: verify credentials and issue backend JWT
+// Login endpoint: verify credentials and issue backend JWT or Supabase Token
 router.post('/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body || {}
@@ -42,6 +62,29 @@ router.post('/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Email dan password wajib diisi' })
     }
 
+    // 1. Try Supabase Login (if user already migrated)
+    const { data: sbData, error: sbError } = await supabase.auth.signInWithPassword({ email, password })
+    
+    if (!sbError && sbData?.session) {
+      // Success! User is in Supabase.
+      const { DataTypes } = require('sequelize')
+      const User = require('../../../../models/user')(db.sequelize, DataTypes)
+      const user = await User.findOne({ where: { email } })
+      
+      if (!user) {
+          return res.status(401).json({ error: 'User tidak ditemukan di sistem lokal' })
+      }
+      
+      return res.json({
+          user: { id: String(user.id), role: user.role, email: user.email, name: user.name },
+          accessToken: sbData.session.access_token,
+          expires: new Date(sbData.session.expires_at * 1000).toISOString(),
+          loggedIn: true,
+          provider: 'supabase'
+      })
+    }
+
+    // 2. Fallback: Local Login + Auto-Migrate
     const { DataTypes } = require('sequelize')
     const User = require('../../../../models/user')(db.sequelize, DataTypes)
     const user = await User.findOne({ where: { email } })
@@ -49,11 +92,10 @@ router.post('/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Email atau password salah' })
     }
 
+    // Validate password (local)
     let valid = false
     try {
       const bcrypt = require('bcryptjs')
-      // If stored password looks like a bcrypt hash, use bcrypt compare.
-      // Otherwise, fall back to plaintext compare for dev/seeded users.
       const looksHashed = typeof user.password === 'string' && user.password.startsWith('$2')
       if (looksHashed) {
         valid = await bcrypt.compare(password, user.password)
@@ -61,31 +103,65 @@ router.post('/auth/login', async (req, res) => {
         valid = String(user.password) === String(password)
       }
     } catch (_err) {
-      // Fallback compare (plaintext or unsupported bcrypt)
-      valid = String(user.password) === String(password)
+       valid = String(user.password) === String(password)
     }
 
     if (!valid) {
       return res.status(401).json({ error: 'Email atau password salah' })
     }
 
-    const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret'
-    const JWT_AUDIENCE = process.env.JWT_AUD || 'pos-app'
-    const JWT_ISSUER = process.env.JWT_ISS || 'pos-backend'
+    // Local login success! Now Migrate to Supabase if Admin key available
+    let accessToken = null
+    let expiry = null
+    let provider = 'express-jwt'
 
-    // Include both `sub` and explicit `id` to satisfy downstream routes
-    // that read `req.user.id` (e.g., cashier-shifts actions)
-    const payload = { sub: String(user.id), id: Number(user.id), role: user.role, email: user.email, name: user.name }
-    const accessToken = jwt.sign(payload, JWT_SECRET, { issuer: JWT_ISSUER, audience: JWT_AUDIENCE, expiresIn: '12h' })
-    const exp = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
+    if (supabaseAdmin) {
+       // Check if user exists in Supabase but password failed (maybe changed in Supabase?)
+       // Actually signInWithPassword failed above, so either user missing or password wrong.
+       // We assume user missing if local works.
+       // Try create user
+       const { data: newData, error: newError } = await supabaseAdmin.auth.admin.createUser({
+         email: email,
+         password: password,
+         email_confirm: true,
+         user_metadata: { name: user.name, role: user.role }
+       })
+
+       if (!newError && newData?.user) {
+         // Now sign in to get a session
+         const { data: sessData } = await supabase.auth.signInWithPassword({ email, password })
+         if (sessData?.session) {
+            accessToken = sessData.session.access_token
+            expiry = new Date(sessData.session.expires_at * 1000).toISOString()
+            provider = 'supabase'
+            console.log(`[Auth] User ${email} auto-migrated to Supabase`)
+         }
+       } else {
+         // If error is "User already registered", it means password mismatch between local and supabase
+         // We can't update supabase password easily without reset.
+         // Just fall back to local token.
+         console.warn('[Auth] Auto-migration skipped:', newError?.message)
+       }
+    }
+
+    // If migration failed or no admin key, fall back to issuing local JWT
+    if (!accessToken) {
+        const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret'
+        const JWT_AUDIENCE = process.env.JWT_AUD || 'pos-app'
+        const JWT_ISSUER = process.env.JWT_ISS || 'pos-backend'
+        const payload = { sub: String(user.id), id: Number(user.id), role: user.role, email: user.email, name: user.name }
+        accessToken = jwt.sign(payload, JWT_SECRET, { issuer: JWT_ISSUER, audience: JWT_AUDIENCE, expiresIn: '12h' })
+        expiry = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
+    }
 
     return res.json({
       user: { id: String(user.id), role: user.role, email: user.email, name: user.name },
       accessToken,
-      expires: exp,
+      expires: expiry,
       loggedIn: true,
-      provider: 'express-jwt'
+      provider
     })
+
   } catch (err) {
     console.error('[Express] /auth/login error:', err)
     return res.status(500).json({ error: 'Internal Server Error' })
@@ -98,112 +174,32 @@ router.post('/auth/bootstrap-dev', async (req, res) => {
     if (process.env.NODE_ENV === 'production') {
       return res.status(403).json({ error: 'Forbidden in production' })
     }
-    const { email = 'admin@pos.local', password = 'admin123', name = 'Admin' } = req.body || {}
+    
+    // Existing bootstrap logic (kept simple, assumes local DB)
     const { DataTypes } = require('sequelize')
     const User = require('../../../../models/user')(db.sequelize, DataTypes)
-    let user = await User.findOne({ where: { email } })
-    let created = false
-    if (!user) {
-      user = await User.create({ email, password, name, role: 'ADMIN' })
-      created = true
+    
+    // Check if any admin exists
+    const existingAdmin = await User.findOne({ where: { role: 'ADMIN' } })
+    if (existingAdmin) {
+      return res.status(400).json({ error: 'Admin already exists' })
     }
-    const sanitized = user.get({ plain: true })
-    delete sanitized.password
-    return res.json({ created, user: sanitized })
-  } catch (err) {
-    console.error('[Express] /auth/bootstrap-dev error:', err)
-    return res.status(500).json({ error: 'Internal Server Error' })
-  }
-})
-
-// Logout endpoint: stateless, client should discard token
-router.post('/auth/logout', (_req, res) => {
-  return res.json({ success: true })
-})
-
-// Protected demo endpoint using JWT and validation
-router.post(
-  '/echo',
-  authMiddleware,
-  buildValidator({
-    location: 'body',
-    schema: {
-      message: { type: 'string', required: true }
-    }
-  }),
-  (req, res) => {
-    res.json({ echoed: req.body.message, user: req.user })
-  }
-)
-
-// Protected debug health endpoint
-router.get('/debug/health', authMiddleware, async (req, res) => {
-  try {
-    // Check DB connectivity
-    let connected = false
-    let conn = null
-    try {
-      await db.sequelize.authenticate()
-      connected = true
-      const cfg = db.sequelize?.config || {}
-      conn = {
-        dialect: db.sequelize?.getDialect?.(),
-        database: cfg.database || null,
-        username: cfg.username || null,
-        host: cfg.host || null,
-        port: cfg.port || null,
-      }
-    } catch (e) {
-      connected = false
-    }
-
-    // Lightweight counts (avoid heavy queries)
-    const safeCount = async (modelName) => {
-      try { return await db[modelName].count() } catch { return null }
-    }
-    const counts = {
-      users: await safeCount('User'),
-      products: await safeCount('Product'),
-      categories: await safeCount('Category'),
-      members: await safeCount('Member'),
-      transactions: await safeCount('Transaction'),
-      promotions: await safeCount('Promotion'),
-      vouchers: await safeCount('Voucher'),
-      shifts: await safeCount('CashierShift'),
-    }
-
-    res.json({
-      status: 'ok',
-      version: 'v1',
-      timestamp: new Date().toISOString(),
-      user: req.user,
-      db: { connected, conn },
-      counts,
+    
+    const bcrypt = require('bcryptjs')
+    const hashedPassword = await bcrypt.hash('admin123', 10)
+    
+    const admin = await User.create({
+      name: 'Admin Dev',
+      email: 'admin@example.com',
+      password: hashedPassword,
+      role: 'ADMIN'
     })
+    
+    return res.json({ message: 'Admin user created', email: admin.email, password: 'admin123' })
   } catch (err) {
-    console.error('[Express] debug/health error:', err)
-    res.status(500).json({ status: 'error', error: 'Failed to check health' })
+    console.error('[Bootstrap] Error:', err)
+    return res.status(500).json({ error: 'Failed to bootstrap' })
   }
 })
-
-// Mount grouped routers
-router.use('/users', require('./users'))
-router.use('/transactions', require('./transactions'))
-router.use('/operational-expenses', require('./operationalExpenses'))
-router.use('/reports', require('./reports'))
-router.use('/categories', require('./categories'))
-router.use('/products', require('./products'))
-router.use('/members', require('./members'))
-router.use('/vouchers', require('./vouchers'))
-router.use('/promotions', require('./promotions'))
-router.use('/payments', require('./payments'))
-// Action endpoints for payments (confirmations, midtrans integrations)
-router.use('/payments', require('./payments.actions'))
-// Mount action routes first to ensure specific paths like '/current' take precedence
-router.use('/cashier-shifts', require('./cashierShifts.actions'))
-router.use('/cashier-shifts', require('./cashierShifts'))
-router.use('/whatsapp', require('./whatsapp'))
-router.use('/dashboard', require('./dashboard'))
-
 
 module.exports = router

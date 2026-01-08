@@ -14,8 +14,9 @@ try {
 const pickTruthy = (v) => ['true', '1', 'yes'].includes(String(v || '').toLowerCase());
 const enableSSL = pickTruthy(process.env.PGSSL || process.env.PG_SSL || process.env.POSTGRES_SSL);
 
-// Use only DATABASE_URL as the primary source for connection string
-let databaseUrl = process.env.DATABASE_URL || null;
+// Use DIRECT_URL if available (preferred for Sequelize/Migrations to avoid PgBouncer prepared statement issues)
+// Otherwise fallback to DATABASE_URL
+let databaseUrl = process.env.DIRECT_URL || process.env.DATABASE_URL || null;
 
 // In development, guard against Prisma Data Proxy URLs which are incompatible with pg/Sequelize
 try {
