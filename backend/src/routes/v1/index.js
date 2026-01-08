@@ -78,6 +78,7 @@ router.post('/auth/login', async (req, res) => {
       return res.json({
           user: { id: String(user.id), role: user.role, email: user.email, name: user.name },
           accessToken: sbData.session.access_token,
+          refreshToken: sbData.session.refresh_token,
           expires: new Date(sbData.session.expires_at * 1000).toISOString(),
           loggedIn: true,
           provider: 'supabase'
@@ -112,6 +113,7 @@ router.post('/auth/login', async (req, res) => {
 
     // Local login success! Now Migrate to Supabase if Admin key available
     let accessToken = null
+    let refreshToken = null
     let expiry = null
     let provider = 'express-jwt'
 
@@ -132,6 +134,7 @@ router.post('/auth/login', async (req, res) => {
          const { data: sessData } = await supabase.auth.signInWithPassword({ email, password })
          if (sessData?.session) {
             accessToken = sessData.session.access_token
+            refreshToken = sessData.session.refresh_token
             expiry = new Date(sessData.session.expires_at * 1000).toISOString()
             provider = 'supabase'
             console.log(`[Auth] User ${email} auto-migrated to Supabase`)
@@ -157,6 +160,7 @@ router.post('/auth/login', async (req, res) => {
     return res.json({
       user: { id: String(user.id), role: user.role, email: user.email, name: user.name },
       accessToken,
+      refreshToken,
       expires: expiry,
       loggedIn: true,
       provider
@@ -201,5 +205,20 @@ router.post('/auth/bootstrap-dev', async (req, res) => {
     return res.status(500).json({ error: 'Failed to bootstrap' })
   }
 })
+
+// --- Feature Routes ---
+router.use('/categories', require('./categories'))
+router.use('/products', require('./products'))
+router.use('/dashboard', require('./dashboard'))
+router.use('/users', require('./users'))
+router.use('/transactions', require('./transactions'))
+router.use('/payments', require('./payments'))
+router.use('/reports', require('./reports'))
+router.use('/cashier-shifts', require('./cashierShifts'))
+router.use('/members', require('./members'))
+router.use('/promotions', require('./promotions'))
+router.use('/vouchers', require('./vouchers'))
+router.use('/operational-expenses', require('./operationalExpenses'))
+router.use('/whatsapp', require('./whatsapp'))
 
 module.exports = router
