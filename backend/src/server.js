@@ -1,4 +1,6 @@
 /* Express backend entrypoint with API versioning and fallback proxy */
+const path = require('path')
+require('dotenv').config({ path: path.join(__dirname, '../../.env') }) // Explicitly load root .env
 const express = require('express')
 const cors = require('cors')
 const IS_TEST = process.env.NODE_ENV === 'test'
@@ -107,10 +109,21 @@ function buildApp () {
     const API_VERSION = 'v1'
     const NEXT_FALLBACK_BASE = process.env.BACKEND_NEXT_FALLBACK_URL || 'http://127.0.0.1:3001'
     const app = buildApp()
-    app.listen(PORT, () => {
-      console.log(`[Express] Backend listening on port ${PORT} at ${API_PREFIX}/${API_VERSION}`)
-      console.log(`[Express] Fallback proxy: DISABLED`)
-    })
+    const start = async () => {
+      try {
+        if (String(process.env.ENABLE_AUTO_SYNC || '').toLowerCase() === 'true') {
+          const db = require('./models')
+          await db.sequelize.sync({ alter: true })
+        }
+      } catch (err) {
+        console.error('[Express] Auto sync failed:', err)
+      }
+      app.listen(PORT, () => {
+        console.log(`[Express] Backend listening on port ${PORT} at ${API_PREFIX}/${API_VERSION}`)
+        console.log(`[Express] Fallback proxy: DISABLED`)
+      })
+    }
+    start()
   }
 
 module.exports = { buildApp }

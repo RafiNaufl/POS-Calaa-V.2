@@ -14,7 +14,8 @@ export default withAuth(
         const parts = accessCookie.split('.')
         if (parts.length === 3) {
           const payload = JSON.parse(atob(parts[1]))
-          userRole = payload?.role
+          // Check top-level role (Legacy) or user_metadata/app_metadata role (Supabase)
+          userRole = payload?.role || payload?.user_metadata?.role || payload?.app_metadata?.role
         }
       } catch (_) {}
     }
