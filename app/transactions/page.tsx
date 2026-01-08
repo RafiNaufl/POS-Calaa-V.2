@@ -40,6 +40,13 @@ interface Transaction {
   customer?: string
   customerPhone?: string
   customerEmail?: string
+  member?: {
+    id: number
+    name: string
+    phone: string
+    email: string
+    points: number
+  }
 }
 
 interface TransactionItem {
@@ -122,10 +129,17 @@ export default function TransactionsPage() {
         voucherCode: voucherUsage?.voucher?.code || null,
         paymentMethod: transaction.paymentMethod,
         status: transaction.status,
-        cashier: transaction.user.name,
-        customer: transaction.customerName,
-        customerPhone: transaction.customerPhone,
-        customerEmail: transaction.customerEmail
+        cashier: transaction.user?.name || 'Unknown',
+        customer: transaction.customerName || transaction.member?.name,
+        customerPhone: transaction.customerPhone || transaction.member?.phone,
+        customerEmail: transaction.customerEmail || transaction.member?.email,
+        member: transaction.member ? {
+          id: transaction.member.id,
+          name: transaction.member.name,
+          phone: transaction.member.phone,
+          email: transaction.member.email,
+          points: transaction.member.points
+        } : undefined
       }
     })
   }

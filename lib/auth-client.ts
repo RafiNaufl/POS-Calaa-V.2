@@ -28,58 +28,50 @@ export function getAccessToken(): string | null {
 }
 
 export async function login(email: string, password: string) {
-  // 1. Try Supabase Login first (Hybrid Strategy)
-  try {
-    const { data: { session }, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    })
-
-    if (session && session.user && !error) {
-      const accessToken = session.access_token
-      const role = session.user.user_metadata?.role || 'CASHIER'
-      
-      const user = {
-        id: session.user.id,
-        email: session.user.email,
-        name: session.user.user_metadata?.name || session.user.email,
-        role: role
-      }
-
-      setAccessToken(accessToken)
-
-      // Sync NextAuth session
-      try {
-        await signIn('credentials', { email, password, redirect: false })
-      } catch (_) {}
-
-      return { accessToken, user }
-    }
-  } catch (err) {
-    // Ignore Supabase login errors and fall back to legacy
-    console.warn('Supabase login failed, falling back to legacy:', err)
-  }
-
-  // 2. Legacy Login Fallback
+  // Always use Backend Login as the source of truth for Role and User Data.
+  // The backend will handle Supabase authentication and return the correct role from the DB.
+  
   const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000'
   const res = await fetch(`${backendBase}/api/v1/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password })
   })
+  
   if (!res.ok) {
     let msg = 'Login gagal'
     try { const data = await res.json(); msg = data.error || msg } catch (_) {}
     throw new Error(msg)
   }
+  
   const data = await res.json()
   setAccessToken(data.accessToken || null)
+  
+  // Store user data in localStorage for useAuth hook
+  if (typeof window !== 'undefined' && data.user) {
+    try {
+      window.localStorage.setItem('pos.user', JSON.stringify(data.user))
+    } catch (_) {}
+  }
+
+  // If Supabase token is returned, hydrate the client-side Supabase session
+  if (data.provider === 'supabase' && data.accessToken && data.refreshToken) {
+      try {
+          await supabase.auth.setSession({
+              access_token: data.accessToken,
+              refresh_token: data.refreshToken
+          })
+      } catch (e) {
+          console.warn('[Auth] Failed to set Supabase session:', e)
+      }
+  }
 
   // Sync NextAuth session for server-side APIs/middleware (getServerSession);
   // client pages use useAuth for gating and user state
   try {
     await signIn('credentials', { email, password, redirect: false })
   } catch (_) {}
+  
   return data
 }
 
@@ -90,6 +82,9 @@ export async function logout() {
   const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000'
   try { await fetch(`${backendBase}/api/v1/auth/logout`, { method: 'POST' }) } catch (_) {}
   setAccessToken(null)
+  if (typeof window !== 'undefined') {
+    try { window.localStorage.removeItem('pos.user') } catch (_) {}
+  }
   try { await signOut({ redirect: false }) } catch (_) {}
   return { success: true }
 }
