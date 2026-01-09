@@ -99,4 +99,27 @@ router.delete('/:id', authMiddleware, async (req, res) => {
   }
 })
 
+// Get current cashier shift
+router.get('/current', authMiddleware, async (req, res) => {
+  try {
+    // Accept both `id` and `sub` for backward compatibility
+    const userId = (req.user?.id ?? req.user?.sub)
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' })
+
+    const currentShift = await db.CashierShift.findOne({
+      where: { userId, status: 'OPEN' },
+      order: [['startedAt', 'DESC']]
+    })
+
+    if (!currentShift) {
+      return res.status(404).json({ error: 'No open shift found' })
+    }
+
+    return res.json({ shift: currentShift })
+  } catch (err) {
+    console.error('[Express] Error fetching current cashier shift:', err)
+    return res.status(500).json({ error: 'Failed to get current shift' })
+  }
+})
+
 module.exports = router
