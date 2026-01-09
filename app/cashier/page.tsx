@@ -246,10 +246,28 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
       if (!user?.id) return
       try {
         setIsLoadingShift(true)
-    const res = await apiFetch('/api/v1/cashier-shifts/current')
+        const res = await apiFetch('/api/v1/cashier-shifts/current')
+        
+        if (!res.ok) {
+          // Handle 404 or other errors from API
+          if (res.status === 404) {
+            // No shift found - this is expected behavior
+            setCurrentShift(null)
+          } else {
+            // Other errors - show error message
+            const errorText = await res.text()
+            console.error('Error loading shift:', errorText)
+            toast.error('Gagal memuat status shift')
+            setCurrentShift(null)
+          }
+          return
+        }
+        
         const json = await res.json()
         setCurrentShift(json.shift || null)
       } catch (e) {
+        console.error('Exception loading shift:', e)
+        toast.error('Terjadi kesalahan saat memuat status shift')
         setCurrentShift(null)
       } finally {
         setIsLoadingShift(false)

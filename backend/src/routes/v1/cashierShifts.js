@@ -17,6 +17,29 @@ router.get('/', authMiddleware, async (_req, res) => {
   }
 })
 
+// Get current cashier shift
+router.get('/current', authMiddleware, async (req, res) => {
+  try {
+    // Accept both `id` and `sub` for backward compatibility
+    const userId = (req.user?.id ?? req.user?.sub)
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' })
+
+    const currentShift = await db.CashierShift.findOne({
+      where: { userId, status: 'OPEN' },
+      order: [['startedAt', 'DESC']]
+    })
+
+    if (!currentShift) {
+      return res.status(404).json({ error: 'Shift not found' })
+    }
+
+    return res.json({ shift: currentShift })
+  } catch (err) {
+    console.error('[Express] Error fetching current cashier shift:', err)
+    return res.status(500).json({ error: 'Failed to get current shift' })
+  }
+})
+
 // Get shift by id
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
@@ -99,26 +122,65 @@ router.delete('/:id', authMiddleware, async (req, res) => {
   }
 })
 
-// Get current cashier shift
-router.get('/current', authMiddleware, async (req, res) => {
+// Open cashier shift
+router.post('/open', authMiddleware, async (req, res) => {
   try {
-    // Accept both `id` and `sub` for backward compatibility
-    const userId = (req.user?.id ?? req.user?.sub)
-    if (!userId) return res.status(401).json({ error: 'Unauthorized' })
+    // Accept both `id` and `sub` for backward compatibility with older tokens
+    const userIdRaw = (req.user?.id ?? req.user?.sub)
+    const userId = parseInt(String(userIdRaw), 10)
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
 
-    const currentShift = await db.CashierShift.findOne({
+    // Dev safety: sync models in non-production
+    if (process.env.NODE_ENV !== 'production') {
+      try { await db.sequelize.sync() } catch (err) { console.error('[cashier-shifts/open] sync error:', err) }
+    }
+
+    const { openingBalance } = req.body || {}
+    const parsed = parseFloat(String(openingBalance))
+    if (Number.isNaN(parsed) || parsed < 0) {
+      return res.status(400).json({ error: 'Saldo pembukaan tidak valid' })
+    }
+
+    const existingUser = await db.User.findByPk(userId)
+    if (!existingUser) {
+      return res.status(401).json({ error: 'User not found. Please sign out and sign in again.' })
+    }
+
+    const existing = await db.CashierShift.findOne({
       where: { userId, status: 'OPEN' },
       order: [['startedAt', 'DESC']]
     })
-
-    if (!currentShift) {
-      return res.status(404).json({ error: 'No open shift found' })
+    if (existing) {
+      return res.status(400).json({ error: 'Shift kasir sudah dibuka' })
     }
 
-    return res.json({ shift: currentShift })
-  } catch (err) {
-    console.error('[Express] Error fetching current cashier shift:', err)
-    return res.status(500).json({ error: 'Failed to get current shift' })
+    const shift = await db.CashierShift.create({
+      userId,
+      openingBalance: parsed,
+      closingBalance: null,
+      status: 'OPEN',
+      physicalCash: 0,
+      systemTotal: 0,
+      difference: 0,
+      startedAt: new Date()
+    })
+
+    await db.CashierShiftLog.create({
+      cashierShiftId: shift.id,
+      action: 'OPEN_SHIFT',
+      details: JSON.stringify({ openingBalance: parsed })
+    })
+
+    const withUser = await db.CashierShift.findByPk(shift.id, {
+      include: [{ model: db.User, as: 'user', attributes: ['id', 'name', 'email', 'role'] }]
+    })
+
+    return res.json({ shift: withUser })
+  } catch (error) {
+    console.error('[cashier-shifts/open] Error:', error)
+    return res.status(500).json({ error: 'Gagal membuka shift kasir' })
   }
 })
 
