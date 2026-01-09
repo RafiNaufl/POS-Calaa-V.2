@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from 'react'
+import { v4 as uuidv4 } from 'uuid'
 import { useAuth } from '@/hooks/useAuth'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
@@ -194,15 +195,19 @@ export default function CashierPage() {
   const [changeAmount, setChangeAmount] = useState<number>(0)
   const [loading, setLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [paymentProcessingId, setPaymentProcessingId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [showTransactionModal, setShowTransactionModal] = useState(false)
   const [completedTransaction, setCompletedTransaction] = useState<any>(null)
   const [showBankTransferModal, setShowBankTransferModal] = useState(false)
 const [bankTransferTransaction, setBankTransferTransaction] = useState<any>(null)
+const [confirmingBankTransfer, setConfirmingBankTransfer] = useState(false)
 const [showQrisModal, setShowQrisModal] = useState(false)
 const [qrisTransaction, setQrisTransaction] = useState<any>(null)
+const [confirmingQris, setConfirmingQris] = useState(false)
 const [showCardModal, setShowCardModal] = useState(false)
 const [cardTransaction, setCardTransaction] = useState<any>(null)
+const [confirmingCard, setConfirmingCard] = useState(false)
   // DOKU Modal state removed
   // Pending transaction state removed
   const [voucherCode, setVoucherCode] = useState('')
@@ -227,6 +232,7 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
   const [closureReport, setClosureReport] = useState<any>(null)
   const [showClosureSummaryModal, setShowClosureSummaryModal] = useState(false)
   const [isSendingClosureWhatsApp, setIsSendingClosureWhatsApp] = useState(false)
+  const [isShiftActionProcessing, setIsShiftActionProcessing] = useState(false)
 
 
   // Fetch data using SWR
@@ -283,6 +289,8 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
       return
     }
     if (!confirm('Konfirmasi membuka shift kasir?')) return
+    
+    setIsShiftActionProcessing(true)
     try {
       const res = await apiFetch('/api/v1/cashier-shifts/open', {
         method: 'POST',
@@ -296,6 +304,8 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
       toast.success('Shift kasir dibuka')
     } catch (e: any) {
       toast.error(e.message || 'Gagal membuka shift')
+    } finally {
+      setIsShiftActionProcessing(false)
     }
   }
 
@@ -306,6 +316,8 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
       return
     }
     if (!confirm('Konfirmasi menutup shift kasir?')) return
+    
+    setIsShiftActionProcessing(true)
     try {
       const res = await apiFetch('/api/v1/cashier-shifts/close', {
         method: 'POST',
@@ -321,6 +333,8 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
       toast.success('Shift kasir ditutup')
     } catch (e: any) {
       toast.error(e.message || 'Gagal menutup shift')
+    } finally {
+      setIsShiftActionProcessing(false)
     }
   }
 
@@ -849,6 +863,14 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
 
     // Validasi sudah dilakukan di modal untuk pembayaran tunai
 
+    // Cegah double submit dengan idempotency key
+    if (paymentProcessingId) {
+      toast.error('Pembayaran sedang diproses, tunggu sebentar...')
+      return
+    }
+
+    const idempotencyKey = uuidv4()
+    setPaymentProcessingId(idempotencyKey)
     setIsProcessing(true)
     
     try {
@@ -916,7 +938,10 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
           // First, create transaction in database with PENDING status
           const transactionResponse = await apiFetch('/api/v1/transactions', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'X-Idempotency-Key': idempotencyKey,
+            },
             body: JSON.stringify({
               ...transactionData,
               paymentMethod: 'MIDTRANS'
@@ -975,6 +1000,7 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-Idempotency-Key': idempotencyKey,
         },
         body: JSON.stringify(pendingForConfirmation ? { ...transactionData, status: 'PENDING', paymentStatus: 'PENDING' } : transactionData)
       })
@@ -1059,6 +1085,7 @@ const [cardTransaction, setCardTransaction] = useState<any>(null)
       }
     } finally {
       setIsProcessing(false)
+      setPaymentProcessingId(null)
     }
   }
 
@@ -1211,7 +1238,13 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
               </div>
               <div className="mt-6 flex justify-end gap-3">
                 <button onClick={() => setShowOpenShiftModal(false)} className="px-4 py-2.5 rounded-lg border border-gray-200 text-gray-700">Batal</button>
-                <button onClick={handleOpenShift} className="px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium">Buka Shift</button>
+                <button 
+                  onClick={handleOpenShift} 
+                  disabled={isShiftActionProcessing}
+                  className="px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium"
+                >
+                  {isShiftActionProcessing ? 'Memproses...' : 'Buka Shift'}
+                </button>
               </div>
             </div>
           </div>
@@ -1305,7 +1338,13 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
               </div>
               <div className="mt-6 flex justify-end gap-3">
                 <button onClick={() => setShowCloseShiftModal(false)} className="px-4 py-2.5 rounded-lg border border-gray-200 text-gray-700">Batal</button>
-                <button onClick={handleCloseShift} className="px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium">Tutup Shift</button>
+                <button 
+                  onClick={handleCloseShift} 
+                  disabled={isShiftActionProcessing}
+                  className="px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium"
+                >
+                  {isShiftActionProcessing ? 'Memproses...' : 'Tutup Shift'}
+                </button>
               </div>
             </div>
           </div>
@@ -2279,10 +2318,10 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                       processPayment()
                     }
                   }}
-                  disabled={cart.length === 0}
+                  disabled={cart.length === 0 || isProcessing}
                   className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white py-3 px-6 rounded-lg font-medium text-base transition-colors shadow-sm flex items-center justify-center"
                 >
-                  Proses Pembayaran
+                  {isProcessing ? 'Memproses...' : 'Proses Pembayaran'}
                 </button>
                 {cart.length > 0 && (
                   <button
@@ -2484,7 +2523,8 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                       printReceipt()
                       setShowTransactionModal(false)
                     }}
-                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
+                    disabled={confirmingBankTransfer}
+                  className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
                   >
                     <PrinterIcon className="h-5 w-5 mr-2" />
                     Cetak Struk
@@ -2604,6 +2644,8 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                 </button>
                 <button
                   onClick={async () => {
+                    if (confirmingBankTransfer) return
+                    setConfirmingBankTransfer(true)
                     try {
                       // Panggil API konfirmasi BANK_TRANSFER yang sekaligus mengurangi stok
                       const response = await apiFetch('/api/v1/payments/bank-transfer/confirm', {
@@ -2651,12 +2693,15 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                     } catch (error) {
                       console.error('Error confirming payment:', error)
                       toast.error('Terjadi kesalahan saat mengkonfirmasi pembayaran')
+                    } finally {
+                      setConfirmingBankTransfer(false)
                     }
                   }}
-                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
+                  disabled={confirmingBankTransfer}
+                className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
                 >
                   <CheckCircleIcon className="h-5 w-5 mr-2" />
-                  Konfirmasi Pembayaran
+                  {confirmingBankTransfer ? 'Memproses...' : 'Konfirmasi Pembayaran'}
                 </button>
                 <button
                   onClick={() => setShowBankTransferModal(false)}
@@ -2717,6 +2762,8 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
             <div className="flex justify-end space-x-3 p-6 border-t border-gray-200">
               <button
                 onClick={async () => {
+                  if (confirmingQris) return
+                  setConfirmingQris(true)
                   try {
                     const response = await apiFetch('/api/v1/payments/qris/confirm', {
                       method: 'POST',
@@ -2761,12 +2808,15 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                   } catch (error) {
                     console.error('Error confirming QRIS payment:', error)
                     toast.error('Terjadi kesalahan saat mengkonfirmasi pembayaran QRIS')
+                  } finally {
+                    setConfirmingQris(false)
                   }
                 }}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
+                disabled={confirmingQris}
+                className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
               >
                 <CheckCircleIcon className="h-5 w-5 mr-2" />
-                Konfirmasi Pembayaran
+                {confirmingQris ? 'Memproses...' : 'Konfirmasi Pembayaran'}
               </button>
               <button
                 onClick={() => setShowQrisModal(false)}
@@ -2818,6 +2868,8 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
             <div className="flex justify-end space-x-3 p-6 border-t border-gray-200">
               <button
                 onClick={async () => {
+                  if (confirmingCard) return
+                  setConfirmingCard(true)
                   try {
                     const response = await apiFetch('/api/v1/payments/card/confirm', {
                       method: 'POST',
@@ -2862,12 +2914,15 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                   } catch (error) {
                     console.error('Error confirming CARD payment:', error)
                     toast.error('Terjadi kesalahan saat mengkonfirmasi pembayaran Kartu')
+                  } finally {
+                    setConfirmingCard(false)
                   }
                 }}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
+                disabled={confirmingCard}
+                className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
               >
                 <CheckCircleIcon className="h-5 w-5 mr-2" />
-                Konfirmasi Pembayaran
+                {confirmingCard ? 'Memproses...' : 'Konfirmasi Pembayaran'}
               </button>
               <button
                 onClick={() => setShowCardModal(false)}

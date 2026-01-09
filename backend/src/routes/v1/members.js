@@ -138,10 +138,51 @@ router.post(
   async (req, res) => {
     try {
       const { name, phone, email, isActive } = req.body
-      const created = await db.Member.create({ name, phone: phone || null, email: email || null, isActive: isActive !== undefined ? Boolean(isActive) : true })
+      
+      // Check for existing member with same phone or email
+      if (phone || email) {
+        const existingMember = await db.Member.findOne({
+          where: {
+            [db.Sequelize.Op.or]: [
+              phone ? { phone } : null,
+              email ? { email } : null
+            ].filter(Boolean)
+          }
+        })
+        
+        if (existingMember) {
+          const conflicts = []
+          if (phone && existingMember.phone === phone) conflicts.push('phone')
+          if (email && existingMember.email === email) conflicts.push('email')
+          return res.status(409).json({ 
+            error: 'Member dengan nomor telepon atau email tersebut sudah ada',
+            conflicts 
+          })
+        }
+      }
+      
+      const created = await db.Member.create({ 
+        name, 
+        phone: phone || null, 
+        email: email || null, 
+        isActive: isActive !== undefined ? Boolean(isActive) : true 
+      })
       res.status(201).json(created)
     } catch (err) {
       console.error('[Express] Error creating member:', err)
+      
+      // Handle Sequelize unique constraint errors
+      if (err.name === 'SequelizeUniqueConstraintError') {
+        const field = err.errors?.[0]?.path
+        if (field === 'phone') {
+          return res.status(409).json({ error: 'Nomor telepon sudah digunakan oleh member lain' })
+        }
+        if (field === 'email') {
+          return res.status(409).json({ error: 'Email sudah digunakan oleh member lain' })
+        }
+        return res.status(409).json({ error: 'Data member sudah ada' })
+      }
+      
       res.status(500).json({ error: 'Failed to create member' })
     }
   }

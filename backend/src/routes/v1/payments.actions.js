@@ -61,21 +61,38 @@ async function confirmTransactionById(transactionId, expectedMethod, req, res) {
     const id = String(transactionId || '').trim()
     if (!id) return res.status(400).json({ error: 'Invalid transactionId' })
 
-    const tx = await db.Transaction.findByPk(id, {
-      include: [{ model: db.TransactionItem, as: 'items' }]
+    // Use database transaction to prevent race conditions
+    const result = await db.sequelize.transaction(async (t) => {
+      // Lock the transaction row for update to prevent race conditions
+      const tx = await db.Transaction.findByPk(id, {
+        include: [{ model: db.TransactionItem, as: 'items' }],
+        lock: true, // This prevents other requests from reading this row until transaction completes
+        transaction: t
+      })
+      
+      if (!tx) throw new Error('Transaction not found')
+      
+      const pm = String(tx.paymentMethod || '')
+      if (pm !== expectedMethod) throw new Error(`Invalid payment method for confirmation: expected ${expectedMethod}`)
+      if (String(tx.status) !== 'PENDING') throw new Error('Transaction is not in PENDING status')
+
+      // Update the transaction
+      await db.Transaction.update({
+        status: 'COMPLETED',
+        paymentStatus: 'PAID',
+        paidAt: new Date()
+      }, { 
+        where: { id },
+        transaction: t 
+      })
+
+      // Reduce stock within the same transaction
+      await reduceStock(tx.items)
+      
+      return tx
     })
-    if (!tx) return res.status(404).json({ error: 'Transaction not found' })
-    const pm = String(tx.paymentMethod || '')
-    if (pm !== expectedMethod) return res.status(400).json({ error: `Invalid payment method for confirmation: expected ${expectedMethod}` })
-    if (String(tx.status) !== 'PENDING') return res.status(400).json({ error: 'Transaction is not in PENDING status' })
 
-    await db.Transaction.update({
-      status: 'COMPLETED',
-      paymentStatus: 'PAID',
-      paidAt: new Date()
-    }, { where: { id } })
-
-    await reduceStock(tx.items)
+    // If we get here, the transaction was successful
 
     // Auto-send WhatsApp receipt asynchronously when confirmation succeeds
     try {
@@ -136,6 +153,16 @@ async function confirmTransactionById(transactionId, expectedMethod, req, res) {
     return res.json({ message: 'Payment confirmed', transaction: updated })
   } catch (err) {
     console.error('[Express] Error confirming transaction:', err)
+    // Handle specific error messages from our transaction
+    if (err.message === 'Transaction not found') {
+      return res.status(404).json({ error: 'Transaction not found' })
+    }
+    if (err.message.includes('Invalid payment method')) {
+      return res.status(400).json({ error: err.message })
+    }
+    if (err.message === 'Transaction is not in PENDING status') {
+      return res.status(400).json({ error: err.message })
+    }
     return res.status(500).json({ error: 'Failed to confirm transaction' })
   }
 }
