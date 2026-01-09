@@ -17,6 +17,7 @@ import {
   ArrowUturnLeftIcon,
   TrashIcon,
   PaperAirplaneIcon,
+  CurrencyDollarIcon,
 } from '@heroicons/react/24/outline'
 import ReceiptPreview from '../../components/ReceiptPreview'
 import Navbar from '@/components/Navbar'
@@ -72,6 +73,7 @@ export default function TransactionsPage() {
   const [receiptTransaction, setReceiptTransaction] = useState<Transaction | null>(null)
   const [showRefundModal, setShowRefundModal] = useState(false)
   const [showCancelModal, setShowCancelModal] = useState(false)
+  const [showAcceptPaymentModal, setShowAcceptPaymentModal] = useState(false)
   const [actionTransaction, setActionTransaction] = useState<Transaction | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false)
@@ -433,6 +435,40 @@ export default function TransactionsPage() {
     } finally {
       setActionLoading(false)
       setActionTransaction(null)
+    }
+  }
+
+  const handleAcceptPayment = (transaction: Transaction) => {
+    setActionTransaction(transaction)
+    setShowAcceptPaymentModal(true)
+  }
+
+  const confirmAcceptPayment = async () => {
+    if (!actionTransaction) return
+    
+    setActionLoading(true)
+    try {
+      const response = await apiFetch(`/api/v1/transactions/${actionTransaction.id}/mark-paid`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+      
+      if (response.ok) {
+        mutate() // Refresh data
+        setShowAcceptPaymentModal(false)
+        setActionTransaction(null)
+        toast.success('Pembayaran berhasil diterima dan status transaksi diperbarui')
+      } else {
+        const data = await response.json().catch(() => ({}))
+        toast.error(data?.error || 'Gagal menerima pembayaran')
+      }
+    } catch (error) {
+      console.error('Error accepting payment:', error)
+      toast.error('Terjadi kesalahan saat menerima pembayaran')
+    } finally {
+      setActionLoading(false)
     }
   }
 
@@ -846,6 +882,15 @@ export default function TransactionsPage() {
 
                 {/* Actions */}
                 <div className="flex justify-end space-x-3 pt-4">
+                  {selectedTransaction.status === 'PENDING' && (
+                    <button
+                      onClick={() => handleAcceptPayment(selectedTransaction)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
+                    >
+                      <CurrencyDollarIcon className="h-5 w-5 mr-2" />
+                      Terima Pembayaran
+                    </button>
+                  )}
                   <button
                     onClick={() => printReceipt(selectedTransaction)}
                     className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
@@ -947,6 +992,43 @@ export default function TransactionsPage() {
                 disabled={actionLoading}
               >
                 {actionLoading ? 'Memproses...' : 'Ya, Batalkan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Accept Payment Confirmation Modal */}
+      {showAcceptPaymentModal && actionTransaction && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Konfirmasi Terima Pembayaran
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Apakah Anda yakin ingin menerima pembayaran untuk transaksi <strong>{actionTransaction.id}</strong>?
+              <br /><br />
+              Total transaksi: <strong>{formatCurrency(actionTransaction.total)}</strong>
+              <br />
+              Status akan berubah dari <span className="text-yellow-600 font-medium">PENDING</span> menjadi <span className="text-green-600 font-medium">COMPLETED</span>.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowAcceptPaymentModal(false)
+                  setActionTransaction(null)
+                }}
+                className="px-4 py-2 text-gray-600 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                disabled={actionLoading}
+              >
+                Batal
+              </button>
+              <button
+                onClick={confirmAcceptPayment}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                disabled={actionLoading}
+              >
+                {actionLoading ? 'Memproses...' : 'Ya, Terima Pembayaran'}
               </button>
             </div>
           </div>

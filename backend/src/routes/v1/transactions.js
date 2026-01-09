@@ -1,6 +1,7 @@
 const { Router } = require('express')
 const { authMiddleware } = require('../../middleware/auth')
 const { buildValidator } = require('../../middleware/validate')
+const { idempotencyMiddleware } = require('../../middleware/idempotency')
 const db = require('../../../../models')
 const { Op } = require('sequelize')
 const ReceiptFormatter = require('../../services/receiptFormatter')
@@ -168,6 +169,7 @@ router.get('/', authMiddleware, async (req, res) => {
 router.post(
   '/',
   authMiddleware,
+  idempotencyMiddleware,
   buildValidator({
     location: 'body',
     schema: {
@@ -275,7 +277,8 @@ router.post(
         customerEmail: data.customerEmail || null,
         memberId: data.memberId || null,
         pointsUsed: Number(data.pointsUsed || 0),
-        notes: data.notes || null
+        notes: data.notes || null,
+        idempotencyKey: req.idempotencyKey || null
       })
 
       // Create items
@@ -693,6 +696,116 @@ router.post('/:id/refund', authMiddleware, async (req, res) => {
     res.json({ message: 'Transaction refunded successfully', transaction: updated })
   } catch (err) {
     console.error('[Express] Error refunding transaction:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// Mark pending transaction as paid
+router.post('/:id/mark-paid', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params
+    
+    const transaction = await db.Transaction.findByPk(id, {
+      include: [
+        { model: db.User, as: 'user', attributes: ['id', 'name'] },
+        { model: db.Member, as: 'member' },
+        { model: db.VoucherUsage, as: 'voucherUsages', include: [{ model: db.Voucher, as: 'voucher' }] },
+        {
+          model: db.TransactionItem,
+          as: 'items',
+          include: [{ model: db.Product, as: 'product' }]
+        }
+      ]
+    })
+
+    if (!transaction) {
+      return res.status(404).json({ error: 'Transaction not found' })
+    }
+
+    if (transaction.status !== 'PENDING') {
+      return res.status(400).json({ error: 'Only pending transactions can be marked as paid' })
+    }
+
+    const now = new Date()
+    await db.sequelize.transaction(async (t) => {
+      // Update transaction status
+      const notesArr = (() => {
+        try { return Array.isArray(transaction.notes) ? transaction.notes : JSON.parse(transaction.notes || '[]') } catch { return [] }
+      })()
+      notesArr.push({ 
+        type: 'STATUS_CHANGED', 
+        changedAt: now.toISOString(), 
+        from: 'PENDING', 
+        to: 'COMPLETED',
+        reason: 'Manual payment acceptance'
+      })
+      
+      await db.Transaction.update({ 
+        status: 'COMPLETED', 
+        notes: JSON.stringify(notesArr), 
+        updatedAt: now 
+      }, { 
+        where: { id }, 
+        transaction: t 
+      })
+
+      // Reduce product stock for completed transaction
+      for (const item of transaction.items || []) {
+        await db.Product.update({
+          stock: db.sequelize.literal(`stock - ${Number(item.quantity)}`)
+        }, { where: { id: item.productId }, transaction: t })
+      }
+
+      // Handle member points if applicable
+      if (transaction.memberId) {
+        const pointsEarned = Math.floor(Number(transaction.finalTotal || 0) / 1000)
+        const pointsUsed = Number(transaction.pointsUsed || 0)
+        
+        if (pointsEarned > 0 || pointsUsed > 0) {
+          await db.Member.increment({
+            points: pointsEarned - (pointsUsed > 0 ? pointsUsed : 0),
+            totalSpent: Number(transaction.finalTotal || 0)
+          }, { where: { id: transaction.memberId }, transaction: t })
+
+          if (pointsEarned > 0) {
+            await db.PointHistory.create({
+              memberId: transaction.memberId,
+              points: pointsEarned,
+              type: 'EARNED',
+              description: `Poin dari transaksi #${transaction.id}`,
+              transactionId: transaction.id
+            }, { transaction: t })
+          }
+
+          if (pointsUsed > 0) {
+            await db.PointHistory.create({
+              memberId: transaction.memberId,
+              points: -pointsUsed,
+              type: 'REDEEMED',
+              description: `Poin digunakan untuk transaksi #${transaction.id}`,
+              transactionId: transaction.id
+            }, { transaction: t })
+          }
+        }
+      }
+    })
+
+    const updated = await db.Transaction.findByPk(id, {
+      include: [
+        { model: db.User, as: 'user', attributes: ['id', 'name'] },
+        { model: db.Member, as: 'member' },
+        { model: db.VoucherUsage, as: 'voucherUsages', include: [{ model: db.Voucher, as: 'voucher' }] },
+        {
+          model: db.TransactionItem,
+          as: 'items',
+          include: [{ model: db.Product, as: 'product' }]
+        }
+      ]
+    })
+
+    res.json({ message: 'Transaction marked as paid successfully', transaction: updated })
+  } catch (err) {
+    console.error('[Express] Error marking transaction as paid:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })
