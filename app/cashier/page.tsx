@@ -2687,8 +2687,8 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                         setPromotionDiscount(0)
                         setBankTransferTransaction(null)
                       } else {
-                        const errorData = await response.json()
-                        toast.error(errorData.message || 'Gagal mengkonfirmasi pembayaran')
+                        const errorData = await response.json().catch(() => ({}))
+                        toast.error(errorData.message || errorData.error || 'Gagal mengkonfirmasi pembayaran')
                       }
                     } catch (error) {
                       console.error('Error confirming payment:', error)
@@ -2803,7 +2803,7 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                       setQrisTransaction(null)
                     } else {
                       const errorData = await response.json().catch(() => ({}))
-                      toast.error(errorData.message || 'Gagal mengkonfirmasi pembayaran QRIS')
+                      toast.error(errorData.message || errorData.error || 'Gagal mengkonfirmasi pembayaran QRIS')
                     }
                   } catch (error) {
                     console.error('Error confirming QRIS payment:', error)
@@ -2909,7 +2909,7 @@ ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.price *
                       setCardTransaction(null)
                     } else {
                       const errorData = await response.json().catch(() => ({}))
-                      toast.error(errorData.message || 'Gagal mengkonfirmasi pembayaran Kartu')
+                      toast.error(errorData.message || errorData.error || 'Gagal mengkonfirmasi pembayaran Kartu')
                     }
                   } catch (error) {
                     console.error('Error confirming CARD payment:', error)

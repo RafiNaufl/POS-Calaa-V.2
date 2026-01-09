@@ -37,10 +37,9 @@ async function authMiddleware(req, res, next) {
         // Legacy payload: { sub: String(user.id), id: Number(user.id), role: user.role, email: user.email, name: user.name }
         // So email is there.
       } catch (jwtErr) {
-        // Both failed
-        return res.status(401).json({ error: 'Unauthorized: invalid token' })
-      }
-    }
+                return res.status(401).json({ error: 'Unauthorized: invalid token' })
+              }
+            }
 
     // 3. Map to local user
     const email = user.email

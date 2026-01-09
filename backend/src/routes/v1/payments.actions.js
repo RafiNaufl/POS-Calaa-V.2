@@ -74,6 +74,12 @@ async function confirmTransactionById(transactionId, expectedMethod, req, res) {
       
       const pm = String(tx.paymentMethod || '')
       if (pm !== expectedMethod) throw new Error(`Invalid payment method for confirmation: expected ${expectedMethod}`)
+      
+      // Idempotency check: if already completed, return success immediately
+      if (String(tx.status) === 'COMPLETED') {
+        return tx
+      }
+
       if (String(tx.status) !== 'PENDING') throw new Error('Transaction is not in PENDING status')
 
       // Update the transaction
@@ -91,6 +97,13 @@ async function confirmTransactionById(transactionId, expectedMethod, req, res) {
       
       return tx
     })
+
+    // If we get here, the transaction was successful or already completed
+    if (String(result.status) === 'COMPLETED' && String(result.paymentStatus) === 'PAID' && result.paidAt) {
+       // It was already completed (idempotent return), so we might want to skip sending WA if it was sent before?
+       // But checking if WA was sent is hard. We can just skip or let it re-send (maybe annoying).
+       // For now, we proceed to send WA receipt as confirmation.
+    }
 
     // If we get here, the transaction was successful
 
