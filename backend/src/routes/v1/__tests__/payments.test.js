@@ -65,4 +65,13 @@ describe('Payments API', () => {
   it('delete without token returns 401', async () => {
     await request(app).delete('/api/v1/payments/any-id').expect(401)
   })
+
+  it('checks qris confirm route existence (should not be 404)', async () => {
+    // Should return 400 because transactionId is missing, NOT 404
+    await request(app)
+      .post('/api/v1/payments/qris/confirm')
+      .set('Authorization', `Bearer ${token}`)
+      .send({})
+      .expect(400)
+  })
 })
