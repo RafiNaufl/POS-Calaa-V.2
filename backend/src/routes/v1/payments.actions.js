@@ -61,6 +61,10 @@ async function confirmTransactionById(transactionId, expectedMethod, req, res) {
     const id = String(transactionId || '').trim()
     if (!id) return res.status(400).json({ error: 'Invalid transactionId' })
 
+    const { reference, notes } = req.body || {}
+
+    console.log(`[Payment] Attempting to confirm transaction ${id} via ${expectedMethod}`)
+
     // Use database transaction to prevent race conditions
     const result = await db.sequelize.transaction(async (t) => {
       // Lock the transaction row for update to prevent race conditions
@@ -70,24 +74,54 @@ async function confirmTransactionById(transactionId, expectedMethod, req, res) {
         transaction: t
       })
       
-      if (!tx) throw new Error('Transaction not found')
+      if (!tx) {
+        console.warn(`[Payment] Transaction ${id} not found`)
+        throw new Error('Transaction not found')
+      }
       
-      const pm = String(tx.paymentMethod || '')
-      if (pm !== expectedMethod) throw new Error(`Invalid payment method for confirmation: expected ${expectedMethod}`)
+      const pm = String(tx.paymentMethod || '').trim().toUpperCase()
+      const expected = String(expectedMethod).toUpperCase()
+
+      // If payment method doesn't match, we might want to allow updating it if it's currently pending
+      // But for safety, we'll just log warning and strict check for now, but case-insensitive
+      if (pm !== expected) {
+        console.warn(`[Payment] Method mismatch for ${id}. Expected: ${expected}, Actual: ${pm}`)
+        // Optional: Allow updating method if it was generic 'PENDING' placeholder or similar?
+        // For now, fail with clear error
+        throw new Error(`Invalid payment method for confirmation: expected ${expectedMethod} but found ${tx.paymentMethod}`)
+      }
       
       // Idempotency check: if already completed, return success immediately
       if (String(tx.status) === 'COMPLETED') {
+        console.log(`[Payment] Transaction ${id} already COMPLETED. Returning success.`)
         return tx
       }
 
-      if (String(tx.status) !== 'PENDING') throw new Error('Transaction is not in PENDING status')
+      if (String(tx.status) !== 'PENDING') {
+        console.warn(`[Payment] Transaction ${id} status is ${tx.status}, expected PENDING`)
+        throw new Error('Transaction is not in PENDING status')
+      }
 
       // Update the transaction
-      await db.Transaction.update({
+      const updateData = {
         status: 'COMPLETED',
         paymentStatus: 'PAID',
         paidAt: new Date()
-      }, { 
+      }
+
+      // Append notes if provided
+      if (notes) {
+        updateData.notes = (tx.notes ? tx.notes + '\n' : '') + notes
+      }
+      
+      // If reference provided, we could store it. Transaction model doesn't have 'reference' field by default
+      // but we can append to notes or if there is a 'paymentReference' field.
+      // Looking at model, there isn't a reference field. We'll append to notes.
+      if (reference) {
+        updateData.notes = (updateData.notes || tx.notes || '') + `\nRef: ${reference}`
+      }
+
+      await db.Transaction.update(updateData, { 
         where: { id },
         transaction: t 
       })
@@ -99,6 +133,8 @@ async function confirmTransactionById(transactionId, expectedMethod, req, res) {
     })
 
     // If we get here, the transaction was successful or already completed
+    console.log(`[Payment] Transaction ${id} confirmed successfully`)
+
     if (String(result.status) === 'COMPLETED' && String(result.paymentStatus) === 'PAID' && result.paidAt) {
        // It was already completed (idempotent return), so we might want to skip sending WA if it was sent before?
        // But checking if WA was sent is hard. We can just skip or let it re-send (maybe annoying).

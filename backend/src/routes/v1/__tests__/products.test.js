@@ -3,7 +3,11 @@ const jwt = require('jsonwebtoken')
 const { buildApp } = require('../../../server')
 const db = require('../../../../../models')
 
-const token = jwt.sign({ sub: 'test-user' }, 'dev-secret', { audience: 'pos-app', issuer: 'pos-backend' })
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret'
+const JWT_AUDIENCE = process.env.JWT_AUD || 'pos-app'
+const JWT_ISSUER = process.env.JWT_ISS || 'pos-backend'
+
+const token = jwt.sign({ sub: 'test-user', email: 'test@example.com' }, JWT_SECRET, { audience: JWT_AUDIENCE, issuer: JWT_ISSUER })
 
 describe('Products API', () => {
   const app = buildApp()
@@ -11,7 +15,17 @@ describe('Products API', () => {
 
   beforeAll(async () => {
     await db.sequelize.sync({ force: true })
+    await db.User.create({
+      name: 'Test User',
+      email: 'test@example.com',
+      role: 'ADMIN',
+      password: 'password123'
+    })
     category = await db.Category.create({ name: 'Electronics' })
+  })
+
+  afterAll(async () => {
+    await db.sequelize.close()
   })
 
   it('returns 401 without token', async () => {

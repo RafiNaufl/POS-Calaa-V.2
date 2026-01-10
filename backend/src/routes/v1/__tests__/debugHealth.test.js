@@ -1,6 +1,7 @@
 const request = require('supertest')
 const jwt = require('jsonwebtoken')
 const { buildApp } = require('../../../server')
+const db = require('../../../../../models')
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret'
 const JWT_AUDIENCE = process.env.JWT_AUD || 'pos-app'
@@ -13,13 +14,27 @@ function sign(payload) {
 describe('Debug Health API', () => {
   const app = buildApp()
 
+  beforeAll(async () => {
+    await db.sequelize.sync({ force: true })
+    await db.User.create({
+      name: 'Test User',
+      email: 'test@example.com',
+      role: 'ADMIN',
+      password: 'password123'
+    })
+  })
+
+  afterAll(async () => {
+    await db.sequelize.close()
+  })
+
   test('GET /api/v1/debug/health without token -> 401', async () => {
     const res = await request(app).get('/api/v1/debug/health')
     expect(res.status).toBe(401)
   })
 
   test('GET /api/v1/debug/health with token -> 200 and shape', async () => {
-    const token = sign({ sub: 'test-user', role: 'ADMIN' })
+    const token = sign({ sub: 'test-user', role: 'ADMIN', email: 'test@example.com' })
     const res = await request(app)
       .get('/api/v1/debug/health')
       .set('Authorization', `Bearer ${token}`)

@@ -3,8 +3,12 @@ const jwt = require('jsonwebtoken')
 const { buildApp } = require('../../../server')
 const db = require('../../../../../models')
 
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret'
+const JWT_AUDIENCE = process.env.JWT_AUD || 'pos-app'
+const JWT_ISSUER = process.env.JWT_ISS || 'pos-backend'
+
 // Sign token with numeric id to satisfy authMiddleware checks
-const token = jwt.sign({ id: 1, role: 'CASHIER' }, 'dev-secret', { audience: 'pos-app', issuer: 'pos-backend' })
+const token = jwt.sign({ id: 1, role: 'CASHIER', email: 'kasir1@example.com' }, JWT_SECRET, { audience: JWT_AUDIENCE, issuer: JWT_ISSUER })
 
 describe('Cashier Shifts Actions API', () => {
   const app = buildApp()

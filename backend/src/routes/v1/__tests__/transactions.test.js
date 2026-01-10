@@ -50,7 +50,7 @@ describe('Transactions API', () => {
   })
 
   it('validates items presence on create', async () => {
-    const token = signToken({ id: 1 })
+    const token = signToken({ id: 1, email: 'tester@example.com' })
     const res = await request(app)
       .post('/api/v1/transactions')
       .set('Authorization', `Bearer ${token}`)
@@ -80,7 +80,7 @@ describe('Transactions API', () => {
   })
 
   it('updates status from PENDING to CANCELLED with reason and history', async () => {
-    const token = signToken({ id: 1 })
+    const token = signToken({ id: 1, email: 'tester@example.com' })
     const tx = await db.Transaction.create({
       id: 'tx-1',
       total: 10000,
@@ -94,6 +94,7 @@ describe('Transactions API', () => {
       .post(`/api/v1/transactions/${tx.id}/cancel`)
       .set('Authorization', `Bearer ${token}`)
       .send({ reason: 'Customer changed mind' })
+    if (res.status !== 200) console.log('Cancel failed:', JSON.stringify(res.body))
     expect(res.status).toBe(200)
     expect(res.body.transaction.status).toBe('CANCELLED')
     expect(res.body.transaction.failureReason).toBe('Customer changed mind')
@@ -105,7 +106,7 @@ describe('Transactions API', () => {
   })
 
   it('updates status from COMPLETED/PAID to REFUNDED with amount and ref', async () => {
-    const token = signToken({ id: 1 })
+    const token = signToken({ id: 1, email: 'tester@example.com' })
     const tx = await db.Transaction.create({
       id: 'tx-2',
       total: 20000,
@@ -131,7 +132,7 @@ describe('Transactions API', () => {
   })
 
   it('rejects refund on non-COMPLETED status', async () => {
-    const token = signToken({ id: 1 })
+    const token = signToken({ id: 1, email: 'tester@example.com' })
     const tx = await db.Transaction.create({
       id: 'tx-3',
       total: 5000,
@@ -149,7 +150,7 @@ describe('Transactions API', () => {
   })
 
   it('rejects cancel on non-PENDING/COMPLETED status', async () => {
-    const token = signToken({ id: 1 })
+    const token = signToken({ id: 1, email: 'tester@example.com' })
     const tx = await db.Transaction.create({
       id: 'tx-4',
       total: 7000,
@@ -167,7 +168,7 @@ describe('Transactions API', () => {
   })
 
   it('supports filtering status and paymentStatus and respects date range', async () => {
-    const token = signToken({ id: 1 })
+    const token = signToken({ id: 1, email: 'tester@example.com' })
     const q1 = await request(app)
       .get('/api/v1/transactions?status=COMPLETED')
       .set('Authorization', `Bearer ${token}`)
