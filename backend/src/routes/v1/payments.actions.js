@@ -36,21 +36,21 @@ function requireCashierOrAdmin(req, res) {
   return true
 }
 
-async function reduceStock(items) {
+async function reduceStock(items, t) {
   for (const item of items || []) {
     if (!item?.productId || !item?.quantity) continue
     await db.Product.update({
       stock: db.sequelize.literal(`stock - ${Number(item.quantity)}`)
-    }, { where: { id: item.productId } })
+    }, { where: { id: item.productId }, transaction: t })
   }
 }
 
-async function restoreStock(items) {
+async function restoreStock(items, t) {
   for (const item of items || []) {
     if (!item?.productId || !item?.quantity) continue
     await db.Product.update({
       stock: db.sequelize.literal(`stock + ${Number(item.quantity)}`)
-    }, { where: { id: item.productId } })
+    }, { where: { id: item.productId }, transaction: t })
   }
 }
 
@@ -75,7 +75,6 @@ async function confirmTransactionById(transactionId, expectedMethod, req, res) {
       })
       
       if (!tx) {
-        console.warn(`[Payment] Transaction ${id} not found`)
         throw new Error('Transaction not found')
       }
       
@@ -86,8 +85,6 @@ async function confirmTransactionById(transactionId, expectedMethod, req, res) {
       // But for safety, we'll just log warning and strict check for now, but case-insensitive
       if (pm !== expected) {
         console.warn(`[Payment] Method mismatch for ${id}. Expected: ${expected}, Actual: ${pm}`)
-        // Optional: Allow updating method if it was generic 'PENDING' placeholder or similar?
-        // For now, fail with clear error
         throw new Error(`Invalid payment method for confirmation: expected ${expectedMethod} but found ${tx.paymentMethod}`)
       }
       
@@ -98,7 +95,6 @@ async function confirmTransactionById(transactionId, expectedMethod, req, res) {
       }
 
       if (String(tx.status) !== 'PENDING') {
-        console.warn(`[Payment] Transaction ${id} status is ${tx.status}, expected PENDING`)
         throw new Error('Transaction is not in PENDING status')
       }
 
@@ -114,9 +110,6 @@ async function confirmTransactionById(transactionId, expectedMethod, req, res) {
         updateData.notes = (tx.notes ? tx.notes + '\n' : '') + notes
       }
       
-      // If reference provided, we could store it. Transaction model doesn't have 'reference' field by default
-      // but we can append to notes or if there is a 'paymentReference' field.
-      // Looking at model, there isn't a reference field. We'll append to notes.
       if (reference) {
         updateData.notes = (updateData.notes || tx.notes || '') + `\nRef: ${reference}`
       }
@@ -127,7 +120,7 @@ async function confirmTransactionById(transactionId, expectedMethod, req, res) {
       })
 
       // Reduce stock within the same transaction
-      await reduceStock(tx.items)
+      await reduceStock(tx.items, t)
       
       return tx
     })
@@ -186,12 +179,16 @@ async function confirmTransactionById(transactionId, expectedMethod, req, res) {
           const message = ReceiptFormatter.formatReceiptForWhatsApp(messageTx)
           const wa = WhatsAppManager.getInstance()
           if (!wa.isConnected()) {
-            wa.initialize().catch(() => {})
+            // Attempt simple initialize, but don't crash
+            wa.initialize().catch((e) => console.warn('[Express] WhatsApp init error:', e))
           }
           // Fire and forget; don't block response on WA send
-          wa.sendMessage(validation.formatted, message)
-            .then((r) => { if (!r.success) console.warn('[Express] WhatsApp send receipt failed:', r.error) })
-            .catch((e) => console.warn('[Express] WhatsApp send receipt error:', e))
+          // Add small delay to ensure init
+          setTimeout(() => {
+              wa.sendMessage(validation.formatted, message)
+                .then((r) => { if (!r.success) console.warn('[Express] WhatsApp send receipt failed:', r.error) })
+                .catch((e) => console.warn('[Express] WhatsApp send receipt error:', e))
+          }, 500)
         }
       }
     } catch (waErr) {
@@ -212,7 +209,7 @@ async function confirmTransactionById(transactionId, expectedMethod, req, res) {
     if (err.message === 'Transaction is not in PENDING status') {
       return res.status(400).json({ error: err.message })
     }
-    return res.status(500).json({ error: 'Failed to confirm transaction' })
+    return res.status(500).json({ error: 'Failed to confirm transaction', details: String(err.message) })
   }
 }
 
