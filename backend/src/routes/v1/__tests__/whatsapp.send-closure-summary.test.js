@@ -1,6 +1,7 @@
 const request = require('supertest')
 const jwt = require('jsonwebtoken')
 const { buildApp } = require('../../../server')
+const db = require('../../../../../models')
 
 jest.mock('../../../services/whatsappManager', () => {
   const instance = {
@@ -23,9 +24,19 @@ function sign(payload) {
 
 describe('WhatsApp send-closure-summary', () => {
   const app = buildApp()
+  let user
+
+  beforeAll(async () => {
+    await db.sequelize.sync({ force: true })
+    user = await db.User.create({ name: 'Cashier', email: 'cashier@example.com', role: 'CASHIER', password: 'pw' })
+  })
+
+  afterAll(async () => {
+    await db.sequelize.close()
+  })
 
   test('POST /api/v1/whatsapp/send-closure-summary validates inputs', async () => {
-    const token = sign({ sub: 'u5', role: 'CASHIER' })
+    const token = sign({ sub: user.id, role: 'CASHIER', email: user.email })
     const res = await request(app)
       .post('/api/v1/whatsapp/send-closure-summary')
       .set('Authorization', `Bearer ${token}`)
@@ -34,7 +45,7 @@ describe('WhatsApp send-closure-summary', () => {
   })
 
   test('POST /api/v1/whatsapp/send-closure-summary happy path', async () => {
-    const token = sign({ sub: 'u6', role: 'CASHIER' })
+    const token = sign({ sub: user.id, role: 'CASHIER', email: user.email })
     const report = {
       shiftId: 'S-1',
       startTime: new Date().toISOString(),

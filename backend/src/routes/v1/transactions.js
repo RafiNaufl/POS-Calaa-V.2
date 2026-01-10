@@ -223,7 +223,8 @@ router.post(
       if (!userExists) return res.status(401).json({ error: 'Unauthorized: user not found' })
 
       // Create core transaction
-      const pm = String(data.paymentMethod || 'CASH')
+      const rawPm = String(data.paymentMethod || 'CASH').trim()
+      const pm = rawPm.toUpperCase()
       const requiresConfirmation = data.requiresConfirmation === true
       const isDelayed = ['VIRTUAL_ACCOUNT','BANK_TRANSFER','MIDTRANS','QRIS'].includes(pm) || (pm === 'CARD' && requiresConfirmation)
       // Server-side subtotal from items and final total (avoid double-subtract)

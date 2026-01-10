@@ -220,5 +220,6 @@ router.use('/promotions', require('./promotions'))
 router.use('/vouchers', require('./vouchers'))
 router.use('/operational-expenses', require('./operationalExpenses'))
 router.use('/whatsapp', require('./whatsapp'))
+router.use('/debug', require('./debug'))
 
 module.exports = router

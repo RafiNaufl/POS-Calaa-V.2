@@ -26,10 +26,11 @@ function sign(payload) {
 
 describe('WhatsApp send-receipt', () => {
   const app = buildApp()
+  let user
 
   beforeAll(async () => {
     await db.sequelize.sync({ force: true })
-    const user = await db.User.create({ name: 'Admin', email: 'admin@example.com', password: 'secret', role: 'CASHIER' })
+    user = await db.User.create({ name: 'Admin', email: 'admin@example.com', password: 'secret', role: 'CASHIER' })
     const category = await db.Category.create({ name: 'Pakaian' })
     const product = await db.Product.create({ name: 'Kaos', price: 50000, color: 'Hitam', size: 'M', categoryId: category.id, productCode: 'KAOS-01' })
     const trx = await db.Transaction.create({
@@ -45,7 +46,7 @@ describe('WhatsApp send-receipt', () => {
   })
 
   test('POST /api/v1/whatsapp/send-receipt validates inputs', async () => {
-    const token = sign({ sub: 'u3', role: 'CASHIER' })
+    const token = sign({ sub: user.id, role: 'CASHIER', email: user.email })
     const res = await request(app)
       .post('/api/v1/whatsapp/send-receipt')
       .set('Authorization', `Bearer ${token}`)
@@ -54,12 +55,12 @@ describe('WhatsApp send-receipt', () => {
   })
 
   test('POST /api/v1/whatsapp/send-receipt happy path', async () => {
-    const trx = await db.Transaction.findOne()
-    const token = sign({ sub: 'u4', role: 'CASHIER' })
+    const token = sign({ sub: user.id, role: 'CASHIER', email: user.email })
+    const transactionId = (await db.Transaction.findOne()).id
     const res = await request(app)
       .post('/api/v1/whatsapp/send-receipt')
       .set('Authorization', `Bearer ${token}`)
-      .send({ transactionId: trx.id, phoneNumber: '081234567890' })
+      .send({ transactionId, phoneNumber: '081234567890' })
     expect(res.status).toBe(200)
     expect(res.body?.success).toBe(true)
     expect(res.body?.data?.messageId).toBe('msg-123')

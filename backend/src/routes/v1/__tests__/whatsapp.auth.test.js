@@ -1,6 +1,7 @@
 const request = require('supertest')
 const jwt = require('jsonwebtoken')
 const { buildApp } = require('../../../server')
+const db = require('../../../../../models')
 
 jest.mock('../../../services/whatsappManager', () => {
   const instance = {
@@ -24,6 +25,17 @@ function sign(payload) {
 
 describe('WhatsApp auth guards', () => {
   const app = buildApp()
+  let cashier, admin
+
+  beforeAll(async () => {
+    await db.sequelize.sync({ force: true })
+    cashier = await db.User.create({ name: 'Cashier', email: 'cashier@example.com', role: 'CASHIER', password: 'pw' })
+    admin = await db.User.create({ name: 'Admin', email: 'admin@example.com', role: 'ADMIN', password: 'pw' })
+  })
+
+  afterAll(async () => {
+    await db.sequelize.close()
+  })
 
   test('GET /api/v1/whatsapp/connection without token -> 401', async () => {
     const res = await request(app).get('/api/v1/whatsapp/connection')
@@ -31,7 +43,7 @@ describe('WhatsApp auth guards', () => {
   })
 
   test('GET /api/v1/whatsapp/connection with non-admin -> 403', async () => {
-    const token = sign({ sub: 'u1', role: 'CASHIER' })
+    const token = sign({ sub: cashier.id, role: 'CASHIER', email: cashier.email })
     const res = await request(app)
       .get('/api/v1/whatsapp/connection')
       .set('Authorization', `Bearer ${token}`)
@@ -39,7 +51,7 @@ describe('WhatsApp auth guards', () => {
   })
 
   test('GET /api/v1/whatsapp/connection with admin -> 200', async () => {
-    const token = sign({ sub: 'u2', role: 'ADMIN' })
+    const token = sign({ sub: admin.id, role: 'ADMIN', email: admin.email })
     const res = await request(app)
       .get('/api/v1/whatsapp/connection')
       .set('Authorization', `Bearer ${token}`)
