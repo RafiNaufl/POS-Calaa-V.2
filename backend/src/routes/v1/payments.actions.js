@@ -68,15 +68,22 @@ async function confirmTransactionById(transactionId, expectedMethod, req, res) {
     // Use database transaction to prevent race conditions
     const result = await db.sequelize.transaction(async (t) => {
       // Lock the transaction row for update to prevent race conditions
+      // Note: We don't include items here to avoid "FOR UPDATE cannot be applied to the nullable side of an outer join" error in Postgres
       const tx = await db.Transaction.findByPk(id, {
-        include: [{ model: db.TransactionItem, as: 'items' }],
-        lock: true, // This prevents other requests from reading this row until transaction completes
+        lock: true, 
         transaction: t
       })
       
       if (!tx) {
         throw new Error('Transaction not found')
       }
+
+      // Fetch items separately
+      const items = await db.TransactionItem.findAll({
+        where: { transactionId: id },
+        transaction: t
+      })
+      tx.items = items
       
       const pm = String(tx.paymentMethod || '').trim().toUpperCase()
       const expected = String(expectedMethod).toUpperCase()
@@ -209,7 +216,11 @@ async function confirmTransactionById(transactionId, expectedMethod, req, res) {
     if (err.message === 'Transaction is not in PENDING status') {
       return res.status(400).json({ error: err.message })
     }
-    return res.status(500).json({ error: 'Failed to confirm transaction', details: String(err.message) })
+    return res.status(500).json({ 
+      error: 'Failed to confirm transaction', 
+      message: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined 
+    })
   }
 }
 
